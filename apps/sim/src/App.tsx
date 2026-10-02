@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as E from '@ripple/engine';
 import type { ChangeSet, FactEdit, Op, World } from '@ripple/engine';
 import type { SimState } from './state';
@@ -68,6 +68,10 @@ export default function App() {
   const applyEdits = (edits: FactEdit[]) => {
     const p = previewEdits(w, edits);
     setPreview(p);
+    // a fresh preview clears stale clarify/error toasts — old negative
+    // messages must not contradict the current preview
+    setNotice('');
+    setExamples([]);
     if (p.errors.length) setNotice('That change is not valid — nothing was altered.');
   };
 
@@ -301,50 +305,10 @@ export default function App() {
         )}
 
         {preview && (
-          <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Change preview">
-            <div className="modal">
-              <h3>Preview — nothing has changed yet</h3>
-              {preview.errors.length > 0 ? (
-                <ul className="errors">
-                  {preview.errors.map((e) => (
-                    <li key={e}>{e}</li>
-                  ))}
-                </ul>
-              ) : (
-                <>
-                  <ul className="deltas">
-                    {preview.deltas.map((d) => (
-                      <li key={d.key}>
-                        <strong>{d.key}</strong>: {d.before} → {d.after}
-                      </li>
-                    ))}
-                  </ul>
-                  {preview.affected.length > 0 && (
-                    <p className="affects">
-                      Will touch: {preview.affected.map((a) => a.label).join(', ')}.
-                    </p>
-                  )}
-                  {preview.untouched.length > 0 && (
-                    <p className="unaffected">
-                      Stays exactly as booked: {preview.untouched.map((a) => a.label).join(', ')}.
-                    </p>
-                  )}
-                  {preview.notes.map((n) => (
-                    <p key={n} className="note">
-                      {n}
-                    </p>
-                  ))}
-                </>
-              )}
-              <div className="modal-actions">
-                <button className="primary" onClick={confirmPreview} disabled={preview.errors.length > 0}>
-                  Apply change
-                </button>
-                <button onClick={() => setPreview(null)}>Discard</button>
-              </div>
-            </div>
-          </div>
+          <PreviewModal preview={preview} onApply={confirmPreview} onDiscard={() => setPreview(null)} />
         )}
+
+
 
         {notice && (
           <div className="notice" role="status">
@@ -445,5 +409,99 @@ function UtteranceInput({ onSubmit }: { onSubmit: (t: string) => void }) {
       />
       <button type="submit">Send</button>
     </form>
+  );
+}
+
+function PreviewModal({
+  preview,
+  onApply,
+  onDiscard,
+}: {
+  preview: Preview;
+  onApply: () => void;
+  onDiscard: () => void;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    restoreRef.current = document.activeElement as HTMLElement | null;
+    const first = boxRef.current?.querySelector<HTMLElement>(
+      'button.primary:not(:disabled), button',
+    );
+    first?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onDiscard();
+      } else if (e.key === 'Tab' && boxRef.current) {
+        const focusables = Array.from(
+          boxRef.current.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), [href], input, [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        if (!focusables.length) return;
+        const first = focusables[0]!;
+        const last = focusables[focusables.length - 1]!;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      restoreRef.current?.focus();
+    };
+  }, [onDiscard]);
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Change preview">
+      <div className="modal" ref={boxRef}>
+        <h3>Preview — nothing has changed yet</h3>
+        {preview.errors.length > 0 ? (
+          <ul className="errors">
+            {preview.errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        ) : (
+          <>
+            <ul className="deltas">
+              {preview.deltas.map((d) => (
+                <li key={d.key}>
+                  <strong>{d.key}</strong>: {d.before} → {d.after}
+                </li>
+              ))}
+            </ul>
+            {preview.affected.length > 0 && (
+              <p className="affects">
+                Will touch: {preview.affected.map((a) => a.label).join(', ')}.
+              </p>
+            )}
+            {preview.untouched.length > 0 && (
+              <p className="unaffected">
+                Stays exactly as booked: {preview.untouched.map((a) => a.label).join(', ')}.
+              </p>
+            )}
+            {preview.notes.map((n) => (
+              <p key={n} className="note">
+                {n}
+              </p>
+            ))}
+          </>
+        )}
+        <div className="modal-actions">
+          <button className="primary" onClick={onApply} disabled={preview.errors.length > 0}>
+            Apply change
+          </button>
+          <button onClick={onDiscard}>Discard</button>
+        </div>
+      </div>
+    </div>
   );
 }

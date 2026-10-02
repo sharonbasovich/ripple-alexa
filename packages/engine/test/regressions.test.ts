@@ -94,6 +94,39 @@ describe('regression: causal recall uses real causes, not dependency lists', () 
     expect(calOp.changedBy).toContain('arrival');
     expect(calOp.changedBy).not.toContain('budget');
   });
+
+  it('pending update gains causes per newly changed field, not wholesale', () => {
+    const w = demoWorld();
+    E.changeFacts(w, [{ key: 'arrival', value: '2026-10-17T09:40' }], NOW);
+    // guests change re-proposes the still-pending arrival update — the new
+    // patch covers start AND guests, so provenance is both, not just arrival
+    const r = E.changeFacts(w, [{ key: 'guests', value: 3 }], NOW + HOUR);
+    const calOp = r.changeSet!.ops.find(
+      (o) => o.commitmentId === 'calendar:visit' && o.kind === 'update',
+    )!;
+    expect(calOp.changedBy).toEqual(expect.arrayContaining(['arrival', 'guests']));
+    // departure-lockup never gains an arrival/guests cause it didn't earn
+    const depOp = r.changeSet!.ops.find((o) => o.commitmentId === 'routines:farewell');
+    if (depOp) expect(depOp.changedBy).not.toContain('arrival');
+  });
+
+  it('arrival recall after a budget-triggered renewal + execute + reload', () => {
+    const w = demoWorld();
+    E.changeFacts(w, [{ key: 'arrival', value: '2026-10-17T09:40' }], NOW);
+    // budget-only edit renews the change set under a different facts version
+    const r = E.changeFacts(w, [{ key: 'budget', value: 350 }], NOW + HOUR);
+    const cs2 = r.changeSet!;
+    const calOp = cs2.ops.find((o) => o.commitmentId === 'calendar:visit' && o.kind === 'update')!;
+    E.approve(w, E.consentFor(w, calOp), NOW + HOUR);
+    E.executeApproved(w, NOW + HOUR);
+    // the applied arrival update must still appear in arrival recall —
+    // even though the executing change set's revision only changed budget
+    const restored = E.deserializeWorld(E.serializeWorld(w))!;
+    const recall = E.recallByFact(restored, 'arrival');
+    const entry = recall.changedCommitments.find((c) => c.id === 'calendar:visit');
+    expect(entry, 'arrival recall must include the executed calendar update').toBeDefined();
+    expect(entry!.state).toBe('applied');
+  });
 });
 
 describe('regression: negated/ambiguous utterances never mutate', () => {
@@ -109,6 +142,9 @@ describe('regression: negated/ambiguous utterances never mutate', () => {
     '-2 guests',
     '2.5 guests',
     'Budget $250.50',
+    '3 guests and order pizza',
+    'Move arrival to Saturday 9:40 if it rains',
+    'arrival 13pm',
   ])('%s → clarify, never an edit', (text) => {
     const w = demoWorld();
     const i = E.parseUtterance(text, w.facts, NOW);
@@ -229,12 +265,23 @@ describe('regression: declined alternatives stay declined', () => {
     const alt = cs.ops.find((o) => o.isAlternative)!;
     expect(alt).toBeDefined();
     E.decline(w, E.consentFor(w, alt), NOW);
-    // Re-check: same facts — the declined $60 top-up must not come back
+    // Re-check: same facts — the declined $60 top-up must not come back,
+    // even after explicitly approving + applying the regenerated failing
+    // grocery update that would otherwise trigger its creation again.
     const cs2 = E.repropose(w, NOW + HOUR, 're-check');
+    const newUpdate = cs2.ops.find(
+      (o) => o.kind === 'update' && o.commitmentId === 'grocery:arrival-delivery',
+    )!;
+    expect(newUpdate).toBeDefined();
+    expect(E.approve(w, E.consentFor(w, newUpdate), NOW + HOUR).ok).toBe(true);
     E.executeApproved(w, NOW + HOUR);
     const stillAlt = cs2.ops.find((o) => o.isAlternative);
     expect(stillAlt === undefined || stillAlt.status === 'declined').toBe(true);
     expect(w.commitments['grocery:arrival-delivery']!.state).toBe('dispatched');
+    // and the world must not contain a second paid top-up order
+    expect(
+      Object.keys(w.commitments).filter((id) => id.startsWith('grocery:topup-')),
+    ).toHaveLength(0);
   });
 });
 

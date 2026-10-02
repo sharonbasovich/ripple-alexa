@@ -25,7 +25,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
+      - run: npm run test:sim
+      - run: npm run test -w @ripple/mcp-server
       - run: npm run build -w @ripple/sim
       - uses: actions/upload-pages-artifact@v3
         with:

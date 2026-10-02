@@ -44,7 +44,7 @@ animation.
 ## 4. Idempotence + persistence (1:30–1:50)
 
 - Re-submit the same change → "No fact actually changed — nothing to do."
-- Reload the page (or reset): pending decisions and the ledger persist via
+- Reload the page: pending decisions and the ledger persist via
   device-local storage; declining stays declined across reloads.
 - Clock control: advance simulated time past a decision window → cards show
   explicit expiry, nothing executes unapproved; Re-check re-proposes with

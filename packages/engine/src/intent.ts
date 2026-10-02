@@ -51,6 +51,8 @@ function parseClock(s: string): number | null {
   let h = parseInt(m[1]!, 10);
   const min = m[2] ? parseInt(m[2], 10) : 0;
   const ap = m[3]?.toLowerCase();
+  // "13pm" is not a real time — am/pm suffixes require 1–12.
+  if (ap !== undefined && (h > 12 || h < 1)) return null;
   if (ap === 'pm' && h < 12) h += 12;
   if (ap === 'am' && h === 12) h = 0;
   if (h > 23 || min > 59) return null;
@@ -165,11 +167,19 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
     covered.push([masked.map(m.index), masked.map(m.index + m[0].length)]);
   }
 
-  // Coverage check: what remains must contain no edit-shaped tokens.
-  const rest = maskCovered(text, covered).text.replace(/[\s,;.!?]+/g, ' ').trim();
-  const EDIT_LEFTOVER =
-    /brother|sister|friend|partner|mom\b|dad\b|mother|father|uncle|aunt|cousin|guest|adult|people|arriv|depart|leav|land|budget|join|\$|\d|move|change|set |push|earlier|later|hour|minute/;
-  if (EDIT_LEFTOVER.test(rest)) {
+  // Coverage check (only when at least one edit matched): after masking the
+  // matched spans, EVERY leftover token must be a connector — any other word
+  // or number means the command carried meaning we did not parse, so we
+  // clarify rather than partially apply.
+  const rest = maskCovered(text, covered).text;
+  const CONNECTORS = new Set([
+    'and', 'with', 'to', 'the', 'at', 'on', 'for', 'a', 'an', 'please',
+    'also', 'then', 'my', 'so', 'plus', 'in', 'of', 'it', 'is', 'too',
+  ]);
+  const leftover = rest
+    .split(/[^a-z0-9$]+/i)
+    .filter((t) => t.length > 0);
+  if (edits.length > 0 && leftover.some((t) => !CONNECTORS.has(t.toLowerCase()))) {
     return {
       type: 'clarify',
       message:
@@ -190,7 +200,7 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
     };
   }
 
-  if (/brother|sister|friend|partner|mom\b|dad\b|mother|father|uncle|aunt|cousin|guest|arriv|depart|leav|land|budget/.test(text)) {
+  if (edits.length === 0 && /brother|sister|friend|partner|mom\b|dad\b|mother|father|uncle|aunt|cousin|guest|arriv|depart|leav|land|budget/.test(text)) {
     return {
       type: 'clarify',
       message: 'I heard you mention the visit — but not a clear change. Nothing was altered. Try:',

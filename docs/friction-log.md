@@ -18,9 +18,8 @@ tools we never touched).
 
 ## Implementation bugs found in review — fixed, with regressions
 
-These were OUR defects in `packages/engine` and `apps/sim`, found by
-independent review at commits `6aab901`/`0f01e99`, reproduced before fixing,
-and locked in by `packages/engine/test/regressions.test.ts`. Listed so the
+These were OUR defects in `packages/engine` and `apps/sim`, found in
+review of commits `6aab901`/`0f01e99`, fixed, and locked in by `packages/engine/test/regressions.test.ts`. Listed so the
 demo doesn't overclaim — none of these are tool or Amazon failures.
 
 - Executed `update` ops changed params but not `commitment.cost` — a repriced

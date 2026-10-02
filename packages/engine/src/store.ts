@@ -391,24 +391,48 @@ function propose(w: World, now: number, trigger: string, changedFacts: FactKey[]
  *  an arrival-caused update to the budget). First-time ops compute causes
  *  from the changed params via the explicit param→fact map. */
 function opCauses(w: World, op: Op, changedFacts: FactKey[]): FactKey[] {
-  for (let i = w.changeSets.length - 1; i >= 0; i--) {
-    const prev = w.changeSets[i]!.ops.find(
+  // Find the most recent still-unexecuted op for the same commitment+kind —
+  // the pending effect this re-proposal continues.
+  let prev: Op | undefined;
+  for (let i = w.changeSets.length - 1; i >= 0 && !prev; i--) {
+    prev = w.changeSets[i]!.ops.find(
       (o) =>
         o.commitmentId === op.commitmentId &&
         o.kind === op.kind &&
         o.changedBy !== undefined &&
         o.changedBy.length > 0 &&
-        o.status !== 'executed',
+        o.status !== 'executed' &&
+        o.status !== 'declined',
     );
-    if (prev) return [...prev.changedBy!];
   }
   const deps =
     op.dependsOn ?? w.commitments[op.commitmentId]?.dependsOn ?? changedFacts;
+
   if (op.kind === 'update' || op.kind === 'alternative') {
+    // Per-field provenance: each actually-changed param gets its own cause —
+    // a prior cause is preserved only for fields the pending effect already
+    // changed; newly changed fields gain their own cause from this batch.
     const keys = Object.keys(op.kind === 'update' ? op.patch : (op.after ?? {}));
-    const c = paramCauses(op.commitmentId, keys, deps);
-    if (c.length) return c;
+    const out = new Set<FactKey>();
+    for (const k of keys) {
+      const mapped = paramCauses(op.commitmentId, [k], deps);
+      const priorHadField =
+        prev !== undefined &&
+        (k in (prev.patch ?? {}) || (prev.after !== null && k in (prev.after ?? {})));
+      for (const f of mapped) {
+        if (priorHadField && prev!.changedBy!.includes(f)) out.add(f);
+        else if (changedFacts.includes(f)) out.add(f);
+      }
+      if (mapped.length === 0) {
+        for (const f of deps.filter((d) => changedFacts.includes(d))) out.add(f);
+      }
+    }
+    if (out.size === 0 && prev) for (const f of prev.changedBy!) out.add(f);
+    if (out.size === 0) for (const f of changedFacts) out.add(f);
+    return [...out];
   }
+
+  if (prev) return [...prev.changedBy!];
   const inter = deps.filter((f) => changedFacts.includes(f));
   return inter.length ? inter : [...changedFacts];
 }
@@ -544,6 +568,10 @@ function refreshChangeSetStatus(w: World, cs: ChangeSet, now: number): void {
  *  truthfully with the original commitment left untouched. */
 export function executeApproved(w: World, now: number): ExecutionOutcome[] {
   w.journal.push({ t: now, type: 'execute' });
+  // Synchronize service lifecycles to the supplied clock before executing —
+  // callers must never observe a stale world where a service 'would have'
+  // dispatched between the last advance and this execution.
+  advanceTimeInner(w, now, false);
   expireStaleChangeSets(w, now); // journalled entry point — expiry is recorded
   const cs = w.changeSets[w.changeSets.length - 1];
   if (!cs || cs.status !== 'open') return [];
@@ -741,6 +769,9 @@ function maybeOfferAlternative(
     status: 'proposed',
   };
   if (op.changedBy) alt.changedBy = op.changedBy;
+  // A declined alternative stays declined — identical facts must not
+  // re-ask the same charge (same suppression as repropose).
+  if (declinedSignatures(w).has(opSignature(alt))) return;
   if (cs.ops.every((o) => o.id !== alt.id)) {
     cs.ops.push(alt);
     emit(w, now, {
@@ -922,13 +953,15 @@ export function recallByFact(w: World, fact: FactKey): {
   >();
   const rank = { proposed: 0, approved: 1, applied: 2 } as const;
   for (const cs of w.changeSets) {
-    if (!factsChangedAt(w, cs.factsVersion).has(fact)) continue;
     for (const o of cs.ops) {
-      // attribute by stamped provenance when present (a multi-fact batch
-      // credits each op to its real causes only); unstamped legacy ops fall
-      // back to any-cause-in-batch
+      // attribute strictly by stamped per-op provenance — a renewed change
+      // set whose revision touched a different fact still credits ops that
+      // kept their original causes. Unstamped legacy ops fall back to the
+      // commitment's declared dependencies.
       const caused =
-        o.changedBy !== undefined ? o.changedBy.includes(fact) : true;
+        o.changedBy !== undefined
+          ? o.changedBy.includes(fact)
+          : (w.commitments[o.commitmentId]?.dependsOn ?? o.dependsOn ?? []).includes(fact);
       if (!caused) continue;
       if (o.status === 'executed') {
         const cur = touched.get(o.commitmentId);
@@ -994,6 +1027,7 @@ export function deserializeWorld(raw: string | null): World | null {
     // Nested shapes must be validated too — a persisted object that parses
     // but is structurally wrong must not reach the renderer.
     const STATES = new Set(['pending', 'confirmed', 'dispatched', 'completed', 'cancelled']);
+    const SERVICES = new Set(['calendar', 'grocery', 'restaurant', 'routines', 'pickup']);
     const KINDS = new Set(['create', 'update', 'cancel', 'alternative']);
     const OSTAT = new Set([
       'proposed', 'approved', 'declined', 'executed', 'rejected', 'expired', 'superseded',
@@ -1005,6 +1039,8 @@ export function deserializeWorld(raw: string | null): World | null {
         !isObj(c) ||
         typeof c.id !== 'string' ||
         typeof c.label !== 'string' ||
+        typeof c.service !== 'string' ||
+        !SERVICES.has(c.service) || // bogus service crashes POLICIES lookup later
         typeof c.state !== 'string' ||
         !STATES.has(c.state) ||
         typeof c.cost !== 'number' ||
