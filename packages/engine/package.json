@@ -6,7 +6,8 @@
   "license": "MIT",
   "description": "Deterministic causal-reconciliation engine for the Ripple simulated Alexa+ demo.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./dist/*": "./dist/*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

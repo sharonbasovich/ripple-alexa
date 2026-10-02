@@ -1,6 +1,6 @@
 // Local-only entrypoint: node src/index.mjs  →  http://127.0.0.1:8787/mcp
 import http from 'node:http';
-import * as E from '@ripple/engine';
+import * as E from '@ripple/engine/dist/index.js';
 import { createRippleMcpServer, handleMcpRequest } from './server.mjs';
 
 const world = E.createWorld(E.FIXTURE_FACTS, E.PLAN_CREATED_AT);

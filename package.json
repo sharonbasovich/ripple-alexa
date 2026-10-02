@@ -15,7 +15,8 @@
     "test": "npm run test -w @ripple/engine",
     "lint": "eslint .",
     "dev": "npm run dev -w @ripple/sim",
-    "test:sim": "npm run test -w @ripple/sim"
+    "test:sim": "npm run test -w @ripple/sim",
+    "mcp": "npm run build -w @ripple/engine && node apps/mcp-server/src/index.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

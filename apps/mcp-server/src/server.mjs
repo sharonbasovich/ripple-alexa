@@ -2,7 +2,7 @@
 // Dev tool for judges/developers — NOT an Alexa add-on, integration, or
 // claim of one. Loopback only; rejects non-loopback origins/hosts; no
 // outbound calls; world state lives in this process's memory only.
-import * as E from '@ripple/engine';
+import * as E from '@ripple/engine/dist/index.js'; // built engine — plain node can't consume TS source
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
