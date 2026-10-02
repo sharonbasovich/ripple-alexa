@@ -156,12 +156,11 @@ export default function App() {
 
   return (
     <div className={`app device-${device} ${compact ? 'compact' : ''}`}>
-      <div className="sim-banner" role="note">
-        Simulated Alexa+ experience · fictional services, prices &amp; policies · nothing real is
-        booked · data stays on this device
-      </div>
-
       <header className="hero">
+        <div className="sim-banner" role="note">
+          Simulated Alexa+ experience · fictional services, prices &amp; policies · nothing real is
+          booked · data stays on this device
+        </div>
         <div>
           <h1>Ripple</h1>
           <p className="tagline">

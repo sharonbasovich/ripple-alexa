@@ -180,6 +180,7 @@ const PARAM_LABEL: Record<string, string> = {
   guests: 'Guests',
   items: 'Items',
   remindAt: 'Reminder at',
+  arrival: 'Flight arrives',
   runAt: 'Runs at',
   start: 'Starts',
   end: 'Ends',

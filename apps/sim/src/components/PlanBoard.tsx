@@ -32,18 +32,18 @@ export function PlanBoard({
   for (const c of Object.values(world.commitments)) byService.get(c.service)?.push(c);
 
   return (
-    <div className="board" role="list" aria-label="Commitments by service">
+    <div className="board" aria-label="Commitments by service">
       {SERVICE_ORDER.map((sid) => {
         const items = (byService.get(sid) ?? []).slice().sort((a, b) => a.id.localeCompare(b.id));
         if (!items.length) return null;
         return (
           <section key={sid} className={`svc svc-${sid}`} aria-label={SERVICE_META[sid].label}>
-            <h4>{SERVICE_META[sid].label}</h4>
+            <h3>{SERVICE_META[sid].label}</h3>
             <p className="svc-sub">{SERVICE_META[sid].blurb}</p>
+            <ul className="commit-list">
             {items.map((c) => (
-              <div
+              <li
                 key={c.id}
-                role="listitem"
                 className={`commit ${STATE_CLS[c.state] ?? ''} ${affectedIds.has(c.id) ? 'affected' : ''}`}
               >
                 <div className="commit-head">
@@ -65,8 +65,9 @@ export function PlanBoard({
                 {c.state === 'cancelled' && (
                   <p className="policy-note">Cancelled — original terms forfeit.</p>
                 )}
-              </div>
+              </li>
             ))}
+            </ul>
           </section>
         );
       })}
