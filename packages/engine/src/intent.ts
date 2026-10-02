@@ -122,82 +122,78 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
     return { type: 'status', describe: 'Show plan status' };
   }
 
-  // ---- guest count -----------------------------------------------------
-  if (/brother|sister|friend|partner|one more|another (adult|guest|person)|joining|joins/.test(text)) {
-    // relative references without an action word are ambiguous
-    if (/asked|about|wonder|think|maybe|might|if |question|told/.test(text)) {
-      return {
-        type: 'clarify',
-        message: 'I heard you mention someone — but not a clear change. Nothing was altered. Try:',
-        examples: EXAMPLE_UTTERANCES,
-      };
-    }
-    const guests = facts.guests + 1;
-    return {
-      type: 'edit',
-      edits: [{ key: 'guests', value: guests }],
-      describe: `Guest count ${facts.guests} → ${guests}`,
-    };
+  // ---- anchored whole-command edit grammar -------------------------------
+  // Every extractor must consume a complete command segment. Whatever is
+  // left over is scanned for edit-shaped tokens: if the command still has
+  // unparsed meaning we clarify rather than silently applying a partial
+  // parse ("3 guests and budget $250" must apply both or neither).
+  const covered: [number, number][] = [];
+  const edits: FactEdit[] = [];
+
+  const arrival = tryArrivalEdit(text, facts, covered);
+  if (arrival) edits.push(arrival);
+  const departure = tryDepartureEdit(text, facts, covered);
+  if (departure) edits.push(departure);
+
+  const masked = maskCovered(text, covered);
+
+  // guest joins: relative + action verb, whole-phrase match
+  let m = /\b(?:my\s+)?(?:brother|sister|friend|partner|mom|dad|mother|father|uncle|aunt|cousin)\b\s*(?:is\s+|will\s+be\s+|may\s+be\s+)?(?:join(?:s|ing)?|coming|staying|tagging along|with us)\b/.exec(masked.text);
+  if (!m) {
+    m = /\b(?:one more|another)\s+(?:adult|guest|person)\b/.exec(masked.text);
   }
-  let m = /(?<![\d.])(\d+)(?![\d.])\s*(guests?|adults?|people)/.exec(text);
+  if (!m) {
+    m = /\bjoin(?:s|ing)\b/.exec(masked.text);
+  }
   if (m) {
-    const guests = parseInt(m[1]!, 10);
-    return {
-      type: 'edit',
-      edits: [{ key: 'guests', value: guests }],
-      describe: `Guest count ${facts.guests} → ${guests}`,
-    };
+    edits.push({ key: 'guests', value: facts.guests + 1 });
+    covered.push([masked.map(m.index), masked.map(m.index + m[0].length)]);
   }
 
-  // ---- budget ----------------------------------------------------------
-  m = /budget\s*(?:to|of|=|:)?\s*\$?\s*(\d+)(?![\d.])/.exec(text) ?? /(?<![\d.])\$(\d+)(?![\d.])\s*budget/.exec(text);
+  // explicit guest count
+  m = /(?<![\d.])(\d+)(?![\d.])\s*(guests?|adults?|people)/.exec(masked.text);
   if (m) {
-    const budget = parseInt(m[1]!, 10);
-    return {
-      type: 'edit',
-      edits: [{ key: 'budget', value: budget }],
-      describe: `Budget $${facts.budget} → $${budget}`,
-    };
+    edits.push({ key: 'guests', value: parseInt(m[1]!, 10) });
+    covered.push([masked.map(m.index), masked.map(m.index + m[0].length)]);
   }
 
-  // ---- arrival / departure (compound commands must parse BOTH or neither)
-  const arrivalEdit = tryArrivalEdit(text, facts);
-  const departureEdit = tryDepartureEdit(text, facts);
-  const mentionsArrival = /arriv|land/.test(text);
-  const mentionsDeparture = /depart|leav/.test(text);
-  if (mentionsArrival && mentionsDeparture) {
-    if (arrivalEdit !== null && departureEdit !== null) {
-      return {
-        type: 'edit',
-        edits: [arrivalEdit, departureEdit],
-        describe: 'Arrival and departure updated together',
-      };
-    }
+  // budget
+  m = /budget\s*(?:to|of|=|:)?\s*\$?\s*(\d+)(?![\d.])/.exec(masked.text) ??
+      /(?<![\d.])\$(\d+)(?![\d.])\s*budget/.exec(masked.text);
+  if (m) {
+    edits.push({ key: 'budget', value: parseInt(m[1]!, 10) });
+    covered.push([masked.map(m.index), masked.map(m.index + m[0].length)]);
+  }
+
+  // Coverage check: what remains must contain no edit-shaped tokens.
+  const rest = maskCovered(text, covered).text.replace(/[\s,;.!?]+/g, ' ').trim();
+  const EDIT_LEFTOVER =
+    /brother|sister|friend|partner|mom\b|dad\b|mother|father|uncle|aunt|cousin|guest|adult|people|arriv|depart|leav|land|budget|join|\$|\d|move|change|set |push|earlier|later|hour|minute/;
+  if (EDIT_LEFTOVER.test(rest)) {
     return {
       type: 'clarify',
       message:
-        "I heard both an arrival and a departure but couldn't parse both cleanly — nothing was changed. Try one fact at a time, or:",
+        edits.length > 0
+          ? 'I only understood part of that — nothing was changed. Try one change at a time, or:'
+          : 'I heard you mention the visit — but not a clear change. Nothing was altered. Try:',
       examples: EXAMPLE_UTTERANCES,
     };
   }
-  if (arrivalEdit !== null) {
+
+  if (edits.length > 0) {
     return {
       type: 'edit',
-      edits: [arrivalEdit],
-      describe: `Arrival → ${humanDay(parseLocal(arrivalEdit.value)!)}`,
+      edits,
+      describe: edits
+        .map((e) => `${e.key === 'guests' ? 'Guests' : e.key === 'budget' ? 'Budget' : e.key === 'arrival' ? 'Arrival' : 'Departure'} → ${e.key === 'arrival' || e.key === 'departure' ? humanDay(parseLocal(String(e.value))!) : e.value}`)
+        .join('; '),
     };
   }
-  if (departureEdit !== null) {
-    return {
-      type: 'edit',
-      edits: [departureEdit],
-      describe: `Departure → ${humanDay(parseLocal(departureEdit.value)!)}`,
-    };
-  }
-  if (mentionsArrival || mentionsDeparture) {
+
+  if (/brother|sister|friend|partner|mom\b|dad\b|mother|father|uncle|aunt|cousin|guest|arriv|depart|leav|land|budget/.test(text)) {
     return {
       type: 'clarify',
-      message: 'I heard a travel update but could not parse the date or time — nothing was changed. Try:',
+      message: 'I heard you mention the visit — but not a clear change. Nothing was altered. Try:',
       examples: EXAMPLE_UTTERANCES,
     };
   }
@@ -205,43 +201,69 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
   return { type: 'unknown', examples: EXAMPLE_UTTERANCES };
 }
 
+interface Masked {
+  /** Text with covered ranges blanked out. */
+  text: string;
+  /** Map an index in the masked string back to the original. */
+  map: (i: number) => number;
+}
+
+function maskCovered(text: string, covered: [number, number][]): Masked {
+  const chars = text.split('');
+  const mapArr: number[] = [];
+  chars.forEach((_, i) => mapArr.push(i));
+  for (const [a, b] of covered) {
+    for (let i = a; i < b && i < chars.length; i++) chars[i] = ' ';
+  }
+  return { text: chars.join(''), map: (i) => i };
+}
+
 const DAY_NAMES = Object.keys(DAY_INDEX).join('|');
 const TIME_RE = `(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)`;
 
-function tryArrivalEdit(text: string, facts: VisitFacts): { key: 'arrival'; value: string } | null {
-  let m =
-    new RegExp(`(?:move|change|set|push)?\\s*(?:the\\s+)?arrival\\s+(?:to\\s+)?(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`).exec(text) ??
-    new RegExp(`arriv(?:e|al|ing)\\s+(?:on\\s+)?(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`).exec(text) ??
-    new RegExp(`land(?:s|ing)?\\s+(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`).exec(text);
-  if (m) {
-    const minutes = parseClock(m[2]!);
-    if (minutes !== null) {
-      return { key: 'arrival', value: dayIsoOn(m[1]!, parseLocal(facts.arrival)!, minutes) };
+function tryArrivalEdit(
+  text: string,
+  facts: VisitFacts,
+  covered: [number, number][],
+): { key: 'arrival'; value: string } | null {
+  const patterns = [
+    new RegExp(`(?:move|change|set|push)?\\s*(?:the\\s+)?arrival\\s+(?:to\\s+)?(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`),
+    new RegExp(`arriv(?:e|al|ing)\\s+(?:on\\s+)?(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`),
+    new RegExp(`land(?:s|ing)?\\s+(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`),
+    new RegExp(`arriv(?:e|al|ing)\\s+(?:at\\s+)?${TIME_RE}$`),
+    /arriv(?:e|al|ing)\s+(\d+)\s*(hour|minute)s?\s+(earlier|later)/,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(text);
+    if (!m) continue;
+    if (re === patterns[4]) {
+      const amt = parseInt(m[1]!, 10) * (m[2] === 'hour' ? 60 : 1) * (m[3] === 'earlier' ? -1 : 1);
+      covered.push([m.index, m.index + m[0].length]);
+      return { key: 'arrival', value: formatLocal(parseLocal(facts.arrival)! + amt * 60_000) };
     }
-    return null;
-  }
-  // "arrival 9:40" (same day, just time)
-  m = new RegExp(`arriv(?:e|al|ing)\\s+(?:at\\s+)?${TIME_RE}$`).exec(text);
-  if (m) {
-    const minutes = parseClock(m[1]!);
-    if (minutes !== null) return { key: 'arrival', value: minutesToIsoOn(facts.arrival, minutes) };
-    return null;
-  }
-  // "earlier"/"later" nudges
-  m = /arriv(?:e|al|ing)\s+(\d+)\s*(hour|minute)s?\s+(earlier|later)/.exec(text);
-  if (m) {
-    const amt = parseInt(m[1]!, 10) * (m[2] === 'hour' ? 60 : 1) * (m[3] === 'earlier' ? -1 : 1);
-    return { key: 'arrival', value: formatLocal(parseLocal(facts.arrival)! + amt * 60_000) };
+    const minutes = parseClock(m[2] ?? m[1]!);
+    if (minutes === null) continue;
+    const isSameDay = re === patterns[3];
+    const iso = isSameDay
+      ? minutesToIsoOn(facts.arrival, minutes)
+      : dayIsoOn(m[1]!, parseLocal(facts.arrival)!, minutes);
+    covered.push([m.index, m.index + m[0].length]);
+    return { key: 'arrival', value: iso };
   }
   return null;
 }
 
-function tryDepartureEdit(text: string, facts: VisitFacts): { key: 'departure'; value: string } | null {
+function tryDepartureEdit(
+  text: string,
+  facts: VisitFacts,
+  covered: [number, number][],
+): { key: 'departure'; value: string } | null {
   const m = new RegExp(
     `(?:depart(?:ure|ing)?|leav(?:e|ing))\\s+(?:on\\s+)?(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`,
   ).exec(text);
   if (!m) return null;
   const minutes = parseClock(m[2]!);
   if (minutes === null) return null;
+  covered.push([m.index, m.index + m[0].length]);
   return { key: 'departure', value: dayIsoOn(m[1]!, parseLocal(facts.departure)!, minutes) };
 }

@@ -23,7 +23,8 @@ export function OpCard({
   readOnly?: boolean;
 }) {
   const status = E.effectiveOpStatus(cs, op, now);
-  const badge = KIND_BADGE[op.kind]!;
+  // unknown persisted kinds render as a generic change rather than crashing
+  const badge = KIND_BADGE[op.kind] ?? { label: 'Change', cls: 'kind-update' };
   const showButtons = !readOnly && status === 'proposed';
 
   return (

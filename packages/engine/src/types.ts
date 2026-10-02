@@ -59,6 +59,10 @@ export interface Commitment {
    *  created by an alternative op (e.g. a paid top-up order) and are never
    *  auto-cancelled by a later diff. */
   origin?: 'plan' | 'extra';
+  /** Monotonically-unique booking occurrence: identifies THIS booking of the
+   *  logical commitment. A cancel+rebook under the same id gets a new
+   *  booking, so a late service callback for the old one is fenced out. */
+  booking: number;
 }
 
 export type OpKind = 'create' | 'update' | 'cancel' | 'alternative';
@@ -185,10 +189,10 @@ export type JournalEntry =
       type: 'serviceEvent';
       commitmentId: string;
       to: 'completed' | 'confirmed';
-      /** Booking-occurrence fence: the createdAt of the commitment this
-       *  event refers to. A late "confirmed" for a cancelled booking must
-       *  not bless a rebooked commitment that reuses the same id. */
-      booking?: number;
+      /** Booking-occurrence fence (mandatory): the commitment's unique
+       *  booking id this event refers to. A late "confirmed" for a cancelled
+       *  booking must not bless a rebooked commitment that reuses the id. */
+      booking: number;
     }
   | { t: number; type: 'repropose'; trigger?: string }
   | { t: number; type: 'execute' };

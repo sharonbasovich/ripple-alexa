@@ -18,16 +18,31 @@ export function seed(): SimState {
   return { world, now: E.FIXTURE_NOW };
 }
 
+let snapshotDiscarded = false;
+
+/** True when persisted demo data existed but was rejected (older schema or
+ *  corrupt) — the app seeds fresh and must say so visibly, not silently. */
+export function discardedSnapshot(): boolean {
+  return snapshotDiscarded;
+}
+
 export function load(): SimState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { now?: number; world?: string };
-    if (typeof parsed.now !== 'number' || typeof parsed.world !== 'string') return null;
+    if (typeof parsed.now !== 'number' || typeof parsed.world !== 'string') {
+      snapshotDiscarded = true;
+      return null;
+    }
     const world = E.deserializeWorld(parsed.world);
-    if (!world) return null;
+    if (!world) {
+      snapshotDiscarded = true;
+      return null;
+    }
     return { world, now: parsed.now };
   } catch {
+    snapshotDiscarded = true;
     return null;
   }
 }
@@ -133,12 +148,13 @@ export function collectEdits(
   if (form.departure !== facts.departure) edits.push({ key: 'departure', value: form.departure });
   if (form.guests !== String(facts.guests)) {
     const n = Number(form.guests);
-    if (!Number.isInteger(n)) return null;
+    // empty/blank or non-integer is invalid — never coerce '' to 0
+    if (form.guests.trim() === '' || !Number.isInteger(n)) return null;
     edits.push({ key: 'guests', value: n });
   }
   if (form.budget !== String(facts.budget)) {
     const n = Number(form.budget);
-    if (!Number.isInteger(n)) return null;
+    if (form.budget.trim() === '' || !Number.isInteger(n)) return null;
     edits.push({ key: 'budget', value: n });
   }
   return edits;

@@ -290,7 +290,13 @@ describe('stale async outcomes', () => {
     const w = demoWorld();
     propose(w);
     approveAndRun(w, opFor(w, 'restaurant:arrival-dinner', 'cancel'));
-    const res = E.applyServiceEvent(w, 'restaurant:arrival-dinner', 'confirmed', NOW + 5000);
+    const res = E.applyServiceEvent(
+      w,
+      'restaurant:arrival-dinner',
+      'confirmed',
+      NOW + 5000,
+      w.commitments['restaurant:arrival-dinner']!.booking,
+    );
     expect(res.stale).toBe(true);
     expect(changeById(w, 'restaurant:arrival-dinner').state).toBe('cancelled');
     const stale = w.ledger.filter((e) => e.type === 'service.stale_event');

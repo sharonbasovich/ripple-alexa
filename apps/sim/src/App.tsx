@@ -8,6 +8,7 @@ import {
   persist,
   clearPersisted,
   persistFailed,
+  discardedSnapshot,
   previewEdits,
   runUtterance,
   fmtParamValue,
@@ -37,6 +38,7 @@ export default function App() {
   const [voice, setVoice] = useState(false);
   const [device, setDevice] = useState<'desktop' | 'phone'>('desktop');
   const [compact, setCompact] = useState(false);
+  const [resetSeq, setResetSeq] = useState(0);
 
   const w = sim.world;
   const now = sim.now;
@@ -130,6 +132,7 @@ export default function App() {
     clearPersisted();
     const s = seed();
     setSim(s);
+    setResetSeq((n) => n + 1); // remount the editor — drop stale inputs
     setPreview(null);
     setRecall(null);
     setNotice('Demo reset — only the synthetic local data was cleared.');
@@ -256,7 +259,7 @@ export default function App() {
         </section>
 
         <section className="editors" aria-label="Edit facts directly">
-          <FactPanel world={w} onPreview={applyEdits} />
+          <FactPanel key={resetSeq} world={w} onPreview={applyEdits} />
         </section>
 
         {openCs && (
@@ -358,6 +361,13 @@ export default function App() {
           </div>
         )}
 
+        {discardedSnapshot() && resetSeq === 0 && (
+          <div className="notice warn-inline" role="alert">
+            Saved demo data was from an older version and could not be trusted — it was cleared
+            and a fresh synthetic plan was loaded.
+          </div>
+        )}
+
         {recall && (
           <section className="recall" aria-label="Causal recall">
             <h3>What changed because of {recall.fact}?</h3>
@@ -366,7 +376,11 @@ export default function App() {
                 <li key={c.id}>
                   {c.label}: {describePatch(c.whatChanged)}{' '}
                   <em className="muted">
-                    ({c.state === 'pending' ? 'approved, awaiting apply' : 'applied'})
+                    ({c.state === 'applied'
+                      ? 'applied'
+                      : c.state === 'approved'
+                        ? 'approved, awaiting apply'
+                        : 'proposed, awaiting decision'})
                   </em>
                 </li>
               ))}

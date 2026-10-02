@@ -18,7 +18,7 @@ import type {
   World,
 } from './types.js';
 import { applyEdits, validateFacts } from './facts.js';
-import { desiredCommitments, diff, createOpFor } from './planner.js';
+import { desiredCommitments, diff, createOpFor, paramCauses } from './planner.js';
 import { POLICIES } from './policies.js';
 import { hashParts, canonical } from './ids.js';
 import { formatLocal, humanDayTime, parseLocal } from './time.js';
@@ -118,6 +118,7 @@ export function createWorld(facts: VisitFacts, now: number): World {
       dependsOn: d.dependsOn,
       version: 1,
       createdAt: now,
+      booking: ++w.seq, // monotonic — never collides with a later rebook
     };
     w.commitments[c.id] = c;
     emit(w, now, {
@@ -180,21 +181,15 @@ export function applyServiceEvent(
   commitmentId: string,
   to: 'completed' | 'confirmed',
   now: number,
-  booking?: number,
+  booking: number,
 ): { applied: boolean; stale: boolean } {
   const c = w.commitments[commitmentId];
   if (!c) return { applied: false, stale: false };
-  w.journal.push({
-    t: now,
-    type: 'serviceEvent',
-    commitmentId,
-    to,
-    ...(booking !== undefined ? { booking } : {}),
-  });
-  // Fence by booking occurrence: an event for a booking that was since
-  // cancelled and rebooked under the same id is stale, even if the new
-  // commitment happens to be in a state the event could target.
-  const wrongBooking = booking !== undefined && c.createdAt !== booking;
+  w.journal.push({ t: now, type: 'serviceEvent', commitmentId, to, booking });
+  // Fence by booking occurrence (mandatory): an event for a booking that
+  // was since cancelled and rebooked under the same id is stale, even if
+  // the new commitment happens to be in a state the event could target.
+  const wrongBooking = c.booking !== booking;
   const valid =
     !wrongBooking &&
     ((to === 'confirmed' && c.state === 'pending') ||
@@ -358,7 +353,7 @@ function propose(w: World, now: number, trigger: string, changedFacts: FactKey[]
   const ops: Op[] = [];
   for (const raw of d.ops) {
     const op = decorateOp(w, raw, now);
-    op.changedBy = [...changedFacts];
+    op.changedBy = opCauses(w, op, changedFacts);
     ops.push(op);
     // Same-day-only conversions (restaurant): the cancel alone would leave
     // desired state unreached, so pair it with an explicit rebook op.
@@ -366,7 +361,7 @@ function propose(w: World, now: number, trigger: string, changedFacts: FactKey[]
       const dd = desired.find((x) => x.id === raw.commitmentId);
       if (dd) {
         const rebook = decorateOp(w, createOpFor(dd, w.factsVersion, proposalSeq), now);
-        rebook.changedBy = [...changedFacts];
+        rebook.changedBy = opCauses(w, rebook, changedFacts);
         ops.push(rebook);
       }
     }
@@ -388,6 +383,34 @@ function propose(w: World, now: number, trigger: string, changedFacts: FactKey[]
     payload: { changeSetId: cs.id, ops: ops.length, trigger },
   });
   return cs;
+}
+
+/** Immutable per-op provenance: which fact changes actually caused THIS
+ *  effect. Re-proposals inherit the causes of their still-pending
+ *  predecessor (a re-check triggered by a budget edit must not re-attribute
+ *  an arrival-caused update to the budget). First-time ops compute causes
+ *  from the changed params via the explicit param→fact map. */
+function opCauses(w: World, op: Op, changedFacts: FactKey[]): FactKey[] {
+  for (let i = w.changeSets.length - 1; i >= 0; i--) {
+    const prev = w.changeSets[i]!.ops.find(
+      (o) =>
+        o.commitmentId === op.commitmentId &&
+        o.kind === op.kind &&
+        o.changedBy !== undefined &&
+        o.changedBy.length > 0 &&
+        o.status !== 'executed',
+    );
+    if (prev) return [...prev.changedBy!];
+  }
+  const deps =
+    op.dependsOn ?? w.commitments[op.commitmentId]?.dependsOn ?? changedFacts;
+  if (op.kind === 'update' || op.kind === 'alternative') {
+    const keys = Object.keys(op.kind === 'update' ? op.patch : (op.after ?? {}));
+    const c = paramCauses(op.commitmentId, keys, deps);
+    if (c.length) return c;
+  }
+  const inter = deps.filter((f) => changedFacts.includes(f));
+  return inter.length ? inter : [...changedFacts];
 }
 
 /** Fill in fee/consent/preview fields for a diff op against live state. */
@@ -625,6 +648,7 @@ function executeOp(w: World, cs: ChangeSet, op: Op, now: number): ExecutionOutco
       origin: op.kind === 'alternative' ? 'extra' : 'plan',
       version: 1,
       createdAt: now,
+      booking: ++w.seq,
     };
     w.commitments[c.id] = c;
     emit(w, now, {
@@ -868,8 +892,9 @@ export function receiptsForFact(w: World, fact: FactKey): Receipt {
   const ops = w.changeSets
     .flatMap((cs) => cs.ops)
     .filter((o) => {
-      // ops caused by this fact = created in a changeset whose trigger
-      // mentions it, or whose commitment depends on it
+      // ops caused by this fact = stamped provenance; legacy ops without a
+      // stamp fall back to the dependency-graph answer
+      if (o.changedBy !== undefined) return o.changedBy.includes(fact);
       const c = w.commitments[o.commitmentId];
       return c?.dependsOn.includes(fact) ?? true;
     });
@@ -887,22 +912,38 @@ export function recallByFact(w: World, fact: FactKey): {
     id: string;
     label: string;
     whatChanged: Record<string, JsonValue>;
-    state: 'applied' | 'pending';
+    state: 'applied' | 'approved' | 'proposed';
   }[];
   unaffected: { id: string; label: string }[];
 } {
-  const touched = new Map<string, { patch: Record<string, JsonValue>; state: 'applied' | 'pending' }>();
+  const touched = new Map<
+    string,
+    { patch: Record<string, JsonValue>; state: 'applied' | 'approved' | 'proposed' }
+  >();
+  const rank = { proposed: 0, approved: 1, applied: 2 } as const;
   for (const cs of w.changeSets) {
     if (!factsChangedAt(w, cs.factsVersion).has(fact)) continue;
     for (const o of cs.ops) {
+      // attribute by stamped provenance when present (a multi-fact batch
+      // credits each op to its real causes only); unstamped legacy ops fall
+      // back to any-cause-in-batch
+      const caused =
+        o.changedBy !== undefined ? o.changedBy.includes(fact) : true;
+      if (!caused) continue;
       if (o.status === 'executed') {
+        const cur = touched.get(o.commitmentId);
         touched.set(o.commitmentId, {
-          patch: { ...(touched.get(o.commitmentId)?.patch ?? {}), ...o.patch },
+          patch: { ...(cur?.patch ?? {}), ...o.patch },
           state: 'applied',
         });
       } else if (o.status === 'approved' || o.status === 'proposed') {
-        if (!touched.has(o.commitmentId)) {
-          touched.set(o.commitmentId, { patch: { ...o.patch }, state: 'pending' });
+        const cur = touched.get(o.commitmentId);
+        const next = o.status === 'approved' ? 'approved' : 'proposed';
+        if (!cur || rank[cur.state] < rank[next]) {
+          touched.set(o.commitmentId, {
+            patch: { ...(cur?.patch ?? {}), ...o.patch },
+            state: next,
+          });
         }
       }
     }
@@ -921,7 +962,10 @@ export function recallByFact(w: World, fact: FactKey): {
 
 // --------------------------------------------------------- persistence
 
-export const WORLD_SCHEMA_VERSION = 1;
+// v2 adds commitments' booking-occurrence ids and op provenance stamps;
+// v1 snapshots (incl. pre-repair cost corruption) are rejected and the
+// caller must seed fresh + say so visibly.
+export const WORLD_SCHEMA_VERSION = 2;
 
 export function serializeWorld(w: World): string {
   return JSON.stringify({ v: WORLD_SCHEMA_VERSION, world: w });
@@ -949,15 +993,24 @@ export function deserializeWorld(raw: string | null): World | null {
     }
     // Nested shapes must be validated too — a persisted object that parses
     // but is structurally wrong must not reach the renderer.
+    const STATES = new Set(['pending', 'confirmed', 'dispatched', 'completed', 'cancelled']);
+    const KINDS = new Set(['create', 'update', 'cancel', 'alternative']);
+    const OSTAT = new Set([
+      'proposed', 'approved', 'declined', 'executed', 'rejected', 'expired', 'superseded',
+    ]);
+    const isObj = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v);
     for (const c of Object.values(w.commitments)) {
       if (
-        typeof c !== 'object' || c === null ||
+        !isObj(c) ||
         typeof c.id !== 'string' ||
         typeof c.label !== 'string' ||
         typeof c.state !== 'string' ||
+        !STATES.has(c.state) ||
         typeof c.cost !== 'number' ||
-        typeof c.params !== 'object' || c.params === null ||
+        !isObj(c.params) ||
         typeof c.createdAt !== 'number' ||
+        typeof c.booking !== 'number' ||
         !Array.isArray(c.dependsOn)
       ) {
         return null;
@@ -965,21 +1018,30 @@ export function deserializeWorld(raw: string | null): World | null {
     }
     for (const cs of w.changeSets) {
       if (
-        typeof cs !== 'object' || cs === null ||
+        !isObj(cs) ||
         typeof cs.id !== 'string' ||
         typeof cs.factsVersion !== 'number' ||
+        typeof cs.createdAt !== 'number' ||
+        typeof cs.expiresAt !== 'number' ||
+        typeof cs.status !== 'string' ||
         !Array.isArray(cs.ops)
       ) {
         return null;
       }
       for (const o of cs.ops) {
         if (
-          typeof o !== 'object' || o === null ||
+          !isObj(o) ||
           typeof o.id !== 'string' ||
           typeof o.kind !== 'string' ||
+          !KINDS.has(o.kind) ||
           typeof o.status !== 'string' ||
+          !OSTAT.has(o.status) ||
+          typeof o.label !== 'string' ||
           typeof o.fee !== 'number' ||
-          typeof o.costDelta !== 'number'
+          typeof o.costDelta !== 'number' ||
+          !isObj(o.patch) ||
+          (o.before !== null && !isObj(o.before)) ||
+          (o.after !== null && !isObj(o.after))
         ) {
           return null;
         }
@@ -987,10 +1049,11 @@ export function deserializeWorld(raw: string | null): World | null {
     }
     for (const e of w.ledger) {
       if (
-        typeof e !== 'object' || e === null ||
+        !isObj(e) ||
         typeof e.seq !== 'number' ||
         typeof e.t !== 'number' ||
-        typeof e.type !== 'string'
+        typeof e.type !== 'string' ||
+        !isObj(e.payload)
       ) {
         return null;
       }

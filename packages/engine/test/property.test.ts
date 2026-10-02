@@ -114,7 +114,11 @@ describe('property: randomized action sequences', () => {
         } else if (action < 0.97) {
           const ids = Object.keys(w.commitments);
           const id = ids[Math.floor(r() * ids.length)]!;
-          E.applyServiceEvent(w, id, r() < 0.5 ? 'confirmed' : 'completed', now);
+          // live bookings get the current booking id; sometimes a stale
+          // ping for a fictional older booking (booking-1) — must be fenced
+          const c = w.commitments[id]!;
+          const booking = r() < 0.8 ? c.booking : Math.max(0, c.booking - 1);
+          E.applyServiceEvent(w, id, r() < 0.5 ? 'confirmed' : 'completed', now, booking);
         } else {
           E.repropose(w, now);
         }

@@ -116,6 +116,49 @@ function paramsEqual(
   return canonical(a) === canonical(b);
 }
 
+/** Explicit param→fact dependency map: which fact each changed parameter
+ *  is actually caused by. Stamped on ops as immutable provenance, so a
+ *  multi-fact batch attributes each effect to the right fact change. */
+export const PARAM_FACT: Record<string, Record<string, FactKey>> = {
+  'calendar:visit': { start: 'arrival', end: 'departure', guests: 'guests' },
+  'grocery:arrival-delivery': {
+    windowStart: 'arrival',
+    windowEnd: 'arrival',
+    items: 'guests',
+    guests: 'guests',
+    cost: 'guests',
+    note: 'arrival',
+  },
+  'restaurant:arrival-dinner': {
+    time: 'arrival',
+    partySize: 'guests',
+    guests: 'guests',
+    cost: 'guests',
+  },
+  'routines:welcome': { runAt: 'arrival', guests: 'guests' },
+  'routines:coffee': { runAt: 'arrival', cups: 'guests' },
+  'pickup:airport': { remindAt: 'arrival', arrival: 'arrival', guests: 'guests' },
+  'routines:farewell': { runAt: 'departure', guests: 'guests' },
+};
+
+/** Facts that actually caused the given changed params of a commitment.
+ *  An unknown param key attributes to every dependency (conservative and
+ *  honest rather than dropping the cause). */
+export function paramCauses(
+  commitmentId: string,
+  paramKeys: string[],
+  dependsOn: FactKey[],
+): FactKey[] {
+  const map = PARAM_FACT[commitmentId] ?? {};
+  const out = new Set<FactKey>();
+  for (const k of paramKeys) {
+    const f = map[k];
+    if (f) out.add(f);
+    else for (const d of dependsOn) out.add(d);
+  }
+  return [...out];
+}
+
 export function paramPatch(
   before: Record<string, JsonValue>,
   after: Record<string, JsonValue>,
