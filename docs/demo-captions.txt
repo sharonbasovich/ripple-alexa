@@ -1,0 +1,42 @@
+Ripple demo — captions transcript (docs/demo.mp4, 0:48)
+
+Burned-in captions appear at the bottom of the frame at these beats:
+
+00:00 – 00:05  A weekend plan: 7 commitments across 5 services - $196 of $300 budget
+00:05 – 00:07  Preset change: arrive Sat 9:40 + one more guest - preview first
+00:07 – 00:17  Decisions: $75 cancel fee (inside 24h); grocery already dispatched
+00:17 – 00:19  Apply: approved ops run; dispatched grocery honestly rejected
+00:19 – 00:23  Alternative offered: Saturday top-up +$60 - declined
+00:23 – 00:28  Repeating the same change is a safe no-op
+00:28 – 00:30  Reload: decisions and ledger persist
+00:30 – 00:33  Recall: what changed because of the flight?
+00:33 – 00:38  Fact editor: budget $300 to $350 - preview, then apply
+00:38 – 00:46  Phone size: single column, no clipping
+00:46 – 00:48  Reset clears synthetic data only - fresh fixture restored
+
+Demo arc (what is shown):
+1. Plan overview — fixture: parents visit Fri 18:05 to Sun 17:00, 2 adults,
+   $300 budget, grocery delivery already DISPATCHED.
+2. Preset chip "New plan: arrive Sat 9:40 - one more guest" opens the
+   preview modal: arrival Fri 18:05 -> Sat 09:40, guests 2 -> 3, affected vs
+   untouched commitments, "Departure stays Sunday 17:00".
+3. Apply creates the "Needs your decision" change set. Grocery update,
+   $75 dinner cancel, and dinner rebook are approved; coffee update declined.
+4. "Apply approved changes": cancel + rebook execute; grocery update is
+   truthfully REJECTED at execution ("Delivery already dispatched").
+5. The engine offers an alternative Saturday top-up delivery (+$60) with an
+   honest note that the original delivery still arrives and is billed —
+   declined here.
+6. Clicking the arrival chip again: preview and apply both report
+   "No fact actually changed" (idempotent).
+7. F5 reload — facts, decisions, and ledger persist from localStorage.
+8. Recall query "What changed because of the flight?" lists the four
+   commitments that actually changed because of arrival, plus unaffected ones.
+9. Direct fact edit: budget $300 -> $350 via the fact editor with
+   preview-before-apply; the over-budget warning clears.
+10. "Phone size" toggle — app renders a narrow single-column layout with
+    no clipping.
+11. "Reset demo — clears synthetic local data only" restores the fixture.
+
+Recorded on commit 7a2697f (a11y palette + semantic board build).
+All services, prices and policies are fictional; nothing real is booked.

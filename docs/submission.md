@@ -100,3 +100,10 @@ data; state is device-local `localStorage` (one browser tab, documented);
 no voice input (optional browser text-to-speech output only); simulated
 clock is UTC-labelled with no DST modeling; the intent parser is
 deliberately bounded and clarifies rather than guesses; no Amazon marks.
+
+**Demo video**: `docs/demo.mp4` (48s, under the 3:00 limit) — real app footage
+with burned-in captions; transcript at `docs/demo-captions.txt`. Public
+video upload and Devpost submission remain separate, human steps.
+
+**Product feedback**: see `docs/feedback.md`; friction observations are in
+`docs/friction-log.md`.

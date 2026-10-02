@@ -60,7 +60,8 @@ microphone, no LLM. Optional browser speech synthesis reads summaries aloud
 packages/engine   Pure deterministic core: facts, diff, consent, ledger, replay, policies
 apps/sim          Vite + React simulated Alexa+ experience (the demo)
 apps/mcp-server   Optional local-only MCP inspection wrapper (dev tool, NOT an Alexa add-on)
-docs/             Demo script, Devpost draft, friction log, screenshots
+docs/             Demo script, Devpost draft, friction log, feedback, screenshots,
+                  demo.mp4 (48s, captioned) + demo-captions.txt
 .github/workflows Pages deploy (typecheck + lint + all test suites gate the artifact)
 ```
 
