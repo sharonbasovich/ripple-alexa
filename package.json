@@ -1,0 +1,30 @@
+{
+  "name": "ripple-alexa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Ripple — a simulated Alexa+ causal reconciliation demo. Change one thing; Alexa repairs only what depended on it.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @ripple/engine && npm run build -w @ripple/sim",
+    "typecheck": "npm run typecheck -w @ripple/engine && npm run typecheck -w @ripple/sim",
+    "test": "npm run test -w @ripple/engine",
+    "test:browser": "npm run test -w @ripple/sim",
+    "lint": "eslint .",
+    "dev": "npm run dev -w @ripple/sim"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "22.15.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "typescript": "5.9.2",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "3.2.4"
+  }
+}
