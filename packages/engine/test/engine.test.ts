@@ -180,6 +180,7 @@ describe('idempotence and duplicates', () => {
     expect(restored).not.toBeNull();
     const outcomes = E.executeApproved(restored, NOW);
     expect(outcomes).toHaveLength(0);
+    E.executeApproved(w, NOW); // same input on the live world — full state must match
     expect(E.stateEquals(w, restored)).toBe(true);
   });
 });

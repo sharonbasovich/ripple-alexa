@@ -186,9 +186,13 @@ describe('property: minimal diff under random single-fact edits', () => {
         const dep = w.commitments[op.commitmentId]?.dependsOn
           ?? E.desiredCommitments(w.facts).find((d) => d.id === op.commitmentId)?.dependsOn
           ?? [];
-        // an op must be causally linked to a changed fact (or be a rebook pair)
-        const relevant = dep.includes(edit.key) ||
-          cs.ops.some((o) => o.commitmentId === op.commitmentId);
+        // an op must be causally linked to the changed fact — except the
+        // paired rebook create that follows a caused cancel for the same
+        // commitment (restaurant same-day-only conversion).
+        const isRebookPair =
+          op.kind === 'create' &&
+          cs.ops.some((o) => o !== op && o.commitmentId === op.commitmentId && o.kind === 'cancel');
+        const relevant = dep.includes(edit.key) || isRebookPair;
         expect(relevant, `${op.commitmentId} vs ${edit.key}`).toBe(true);
       }
     }

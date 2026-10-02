@@ -54,6 +54,11 @@ export interface Commitment {
   /** Simulated time the commitment was booked — pending→confirmed and
    *  dispatch cutoffs are anchored to this, not to the current clock. */
   createdAt: number;
+  /** 'plan' commitments come from desired-state reconciliation (the planner
+   *  may cancel them when they leave desired state); 'extra' commitments were
+   *  created by an alternative op (e.g. a paid top-up order) and are never
+   *  auto-cancelled by a later diff. */
+  origin?: 'plan' | 'extra';
 }
 
 export type OpKind = 'create' | 'update' | 'cancel' | 'alternative';
@@ -90,6 +95,9 @@ export interface Op {
   /** Facts the resulting commitment depends on (used for create/alternative
    *  ops that introduce a new commitment id). */
   dependsOn?: FactKey[];
+  /** Facts that ACTUALLY changed in the triggering batch — the honest
+   *  "because X changed" label, distinct from dependsOn (the causal graph). */
+  changedBy?: FactKey[];
   /** Human-readable note when executing is irreversible or fee-bearing. */
   irreversibleNote?: string;
   status: OpStatus;
@@ -127,6 +135,7 @@ export type EventType =
   | 'op.executed'
   | 'op.rejected'
   | 'fee.charged'
+  | 'op.requoted'
   | 'service.transition'
   | 'service.stale_event'
   | 'kept_by_choice'
@@ -171,7 +180,16 @@ export type JournalEntry =
   | { t: number; type: 'facts'; edits: FactEdit[] }
   | { t: number; type: 'decide'; how: 'approve' | 'decline'; consent: ConsentWire }
   | { t: number; type: 'advance' }
-  | { t: number; type: 'serviceEvent'; commitmentId: string; to: 'completed' | 'confirmed' }
+  | {
+      t: number;
+      type: 'serviceEvent';
+      commitmentId: string;
+      to: 'completed' | 'confirmed';
+      /** Booking-occurrence fence: the createdAt of the commitment this
+       *  event refers to. A late "confirmed" for a cancelled booking must
+       *  not bless a rebooked commitment that reuses the same id. */
+      booking?: number;
+    }
   | { t: number; type: 'repropose'; trigger?: string }
   | { t: number; type: 'execute' };
 
@@ -200,7 +218,10 @@ export interface ValidationResult {
 
 export interface ExecutionOutcome {
   opId: string;
-  status: 'executed' | 'rejected';
+  /** 'requoted' = live terms changed since consent (e.g. a cancellation fee
+   *  appeared inside the late window); the op went back to proposed with the
+   *  new price and needs a fresh decision — nothing executed. */
+  status: 'executed' | 'rejected' | 'requoted';
   reason?: string;
   feeCharged?: number;
 }

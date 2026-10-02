@@ -7,6 +7,7 @@ import {
   load,
   persist,
   clearPersisted,
+  persistFailed,
   previewEdits,
   runUtterance,
   fmtParamValue,
@@ -92,10 +93,20 @@ export default function App() {
       const outcomes = E.executeApproved(world, now);
       const rej = outcomes.filter((o) => o.status === 'rejected');
       const exe = outcomes.filter((o) => o.status === 'executed');
-      if (rej.length && !exe.length) setNotice(`Rejected: ${rej[0]!.reason}`);
+      const req = outcomes.filter((o) => o.status === 'requoted');
+      if (req.length) {
+        setNotice(`${req.length} price${req.length === 1 ? '' : 's'} changed since approval — fresh decision required below.`);
+      } else if (rej.length && !exe.length) setNotice(`Rejected: ${rej[0]!.reason}`);
       else if (rej.length) setNotice(`${exe.length} applied; ${rej.length} rejected — see honest outcome below.`);
       else if (exe.length) setNotice(`${exe.length} change${exe.length === 1 ? '' : 's'} applied.`);
       else setNotice('Nothing approved yet.');
+    });
+  };
+
+  const recheck = () => {
+    update((world) => {
+      E.repropose(world, now, 're-check at your request');
+      setNotice('Re-checked against current facts — open decisions are below.');
     });
   };
 
@@ -106,6 +117,9 @@ export default function App() {
     else if (i.type === 'status') {
       setNotice(speakableSummary(w, now));
       speak(speakableSummary(w, now));
+    } else if (i.type === 'clarify') {
+      setExamples(i.examples);
+      setNotice(i.message);
     } else {
       setExamples(i.examples);
       setNotice("I didn't understand — no state was changed. Try one of these:");
@@ -206,6 +220,28 @@ export default function App() {
           <PlanBoard world={w} affectedIds={affectedIds(w)} />
         </section>
 
+        <section className="editors" aria-label="Make a change">
+          <FactPanel world={w} onPreview={applyEdits} />
+          <div className="utterance">
+            <h3>Say it instead</h3>
+            <UtteranceInput onSubmit={onUtter} />
+            <div className="chips">
+              {CHIPS.map((c) => (
+                <button key={c} className="chip" onClick={() => onUtter(c)}>
+                  {c}
+                </button>
+              ))}
+            </div>
+            {examples.length > 0 && (
+              <ul className="examples">
+                {examples.map((e) => (
+                  <li key={e}>{e}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
         {openCs && (
           <section className="choices" aria-label="Changes awaiting your decision">
             <h2>
@@ -238,30 +274,11 @@ export default function App() {
                 <OpCard key={op.id} op={op} cs={cs} now={now} onDecide={decide} readOnly />
               ))}
             </div>
+            <button onClick={recheck}>
+              Re-check for open decisions (re-proposes against current facts)
+            </button>
           </section>
         )}
-
-        <section className="editors" aria-label="Make a change">
-          <FactPanel world={w} onPreview={applyEdits} />
-          <div className="utterance">
-            <h3>Say it instead</h3>
-            <UtteranceInput onSubmit={onUtter} />
-            <div className="chips">
-              {CHIPS.map((c) => (
-                <button key={c} className="chip" onClick={() => onUtter(c)}>
-                  {c}
-                </button>
-              ))}
-            </div>
-            {examples.length > 0 && (
-              <ul className="examples">
-                {examples.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
 
         {preview && (
           <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Change preview">
@@ -318,15 +335,27 @@ export default function App() {
           </div>
         )}
 
+        {persistFailed() && (
+          <div className="notice warn-inline" role="alert">
+            Browser storage is unavailable — changes work now but will NOT survive a reload.
+          </div>
+        )}
+
         {recall && (
           <section className="recall" aria-label="Causal recall">
             <h3>What changed because of {recall.fact}?</h3>
             <ul>
               {recall.changedCommitments.map((c) => (
                 <li key={c.id}>
-                  {c.label}: {describePatch(c.whatChanged)}
+                  {c.label}: {describePatch(c.whatChanged)}{' '}
+                  <em className="muted">
+                    ({c.state === 'pending' ? 'approved, awaiting apply' : 'applied'})
+                  </em>
                 </li>
               ))}
+              {recall.changedCommitments.length === 0 && (
+                <li className="muted">Nothing was changed by that fact.</li>
+              )}
             </ul>
             <p className="muted">
               Unaffected: {recall.unaffected.map((c) => c.label).join(', ')}

@@ -26,12 +26,25 @@ import { formatLocal, humanDayTime, parseLocal } from './time.js';
 /** How long a change set stays open for decisions (simulated time). */
 export const CHANGESET_TTL_MS = 12 * 3_600_000;
 
-const FACT_LABEL: Record<FactKey, string> = {
+export const FACT_LABEL: Record<FactKey, string> = {
   arrival: 'arrival',
   departure: 'departure',
   guests: 'guest count',
   budget: 'budget',
 };
+
+/** Facts that actually changed at a given facts version — the honest cause
+ *  set, read from facts.changed events, never inferred from dependency
+ *  graphs (which describe what COULD be affected, not what triggered this). */
+export function factsChangedAt(w: World, factsVersion: number): Set<FactKey> {
+  const s = new Set<FactKey>();
+  for (const e of w.ledger) {
+    if (e.type === 'facts.changed' && e.factsVersion === factsVersion && e.causedBy) {
+      s.add(e.causedBy);
+    }
+  }
+  return s;
+}
 
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v));
@@ -167,13 +180,25 @@ export function applyServiceEvent(
   commitmentId: string,
   to: 'completed' | 'confirmed',
   now: number,
+  booking?: number,
 ): { applied: boolean; stale: boolean } {
   const c = w.commitments[commitmentId];
   if (!c) return { applied: false, stale: false };
-  w.journal.push({ t: now, type: 'serviceEvent', commitmentId, to });
+  w.journal.push({
+    t: now,
+    type: 'serviceEvent',
+    commitmentId,
+    to,
+    ...(booking !== undefined ? { booking } : {}),
+  });
+  // Fence by booking occurrence: an event for a booking that was since
+  // cancelled and rebooked under the same id is stale, even if the new
+  // commitment happens to be in a state the event could target.
+  const wrongBooking = booking !== undefined && c.createdAt !== booking;
   const valid =
-    (to === 'confirmed' && c.state === 'pending') ||
-    (to === 'completed' && c.state === 'dispatched');
+    !wrongBooking &&
+    ((to === 'confirmed' && c.state === 'pending') ||
+      (to === 'completed' && c.state === 'dispatched'));
   if (valid) {
     const from = c.state;
     c.state = to;
@@ -239,7 +264,12 @@ export function changeFacts(w: World, edits: FactEdit[], now: number): ChangeRes
     });
   }
 
-  const cs = propose(w, now, changed.map((c) => `${FACT_LABEL[c.key]} ${fmtVal(c.before)} → ${fmtVal(c.after)}`).join('; '));
+  const cs = propose(
+    w,
+    now,
+    changed.map((c) => `${FACT_LABEL[c.key]} ${fmtVal(c.before)} → ${fmtVal(c.after)}`).join('; '),
+    changed.map((c) => c.key),
+  );
   emit(w, now, {
     type: 'budget.evaluated',
     factsVersion: w.factsVersion,
@@ -303,7 +333,7 @@ function expireStaleChangeSets(w: World, now: number): void {
   }
 }
 
-function propose(w: World, now: number, trigger: string): ChangeSet {
+function propose(w: World, now: number, trigger: string, changedFacts: FactKey[] = []): ChangeSet {
   // Supersede any still-open change set — its ops were computed against facts
   // that no longer exist.
   for (const cs of w.changeSets) {
@@ -322,17 +352,23 @@ function propose(w: World, now: number, trigger: string): ChangeSet {
     });
   }
 
+  const proposalSeq = w.changeSets.length;
   const desired = desiredCommitments(w.facts);
-  const d = diff(w.commitments, desired, w.factsVersion);
+  const d = diff(w.commitments, desired, w.factsVersion, proposalSeq);
   const ops: Op[] = [];
   for (const raw of d.ops) {
     const op = decorateOp(w, raw, now);
+    op.changedBy = [...changedFacts];
     ops.push(op);
     // Same-day-only conversions (restaurant): the cancel alone would leave
     // desired state unreached, so pair it with an explicit rebook op.
     if (raw.kind === 'update' && op.kind === 'cancel') {
       const dd = desired.find((x) => x.id === raw.commitmentId);
-      if (dd) ops.push(decorateOp(w, createOpFor(dd, w.factsVersion), now));
+      if (dd) {
+        const rebook = decorateOp(w, createOpFor(dd, w.factsVersion, proposalSeq), now);
+        rebook.changedBy = [...changedFacts];
+        ops.push(rebook);
+      }
     }
   }
 
@@ -513,9 +549,42 @@ function executeOp(w: World, cs: ChangeSet, op: Op, now: number): ExecutionOutco
     allowed = decision.allowed;
     reason = decision.reason;
   }
-  if (allowed && op.kind === 'create' && live && live.state !== 'cancelled') {
+  if (
+    allowed &&
+    (op.kind === 'create' || op.kind === 'alternative') &&
+    live &&
+    live.state !== 'cancelled'
+  ) {
     allowed = false;
     reason = 'Commitment already exists.';
+  }
+
+  // Re-quote before executing: consent binds to the exact fee the human saw.
+  // If the live fee drifted inside the decision window (e.g. approved at $0
+  // 24h+ out, executed inside the late-cancel window), the approved terms no
+  //  longer exist — hand it back for a fresh decision with the new price.
+  if (allowed && op.kind === 'cancel' && live) {
+    const freshFee = POLICIES[live.service].cancelFee(live, now);
+    if (freshFee !== op.fee) {
+      const previousFee = op.fee;
+      op.fee = freshFee;
+      op.status = 'proposed';
+      op.requiresConsent = true;
+      op.reason = `Terms changed since you approved — cancellation fee is now $${freshFee} (was $${previousFee}). Fresh decision required.`;
+      if (freshFee > 0) {
+        op.irreversibleNote = `Non-refundable fee: $${freshFee}. Charged once, never netted against savings.`;
+      } else {
+        delete op.irreversibleNote;
+      }
+      emit(w, now, {
+        type: 'op.requoted',
+        opId: op.id,
+        commitmentId: op.commitmentId,
+        factsVersion: w.factsVersion,
+        payload: { label: op.label, fee: freshFee, previousFee },
+      });
+      return { opId: op.id, status: 'requoted', reason: op.reason };
+    }
   }
 
   if (!allowed) {
@@ -553,6 +622,7 @@ function executeOp(w: World, cs: ChangeSet, op: Op, now: number): ExecutionOutco
       params: clone(op.after ?? {}),
       cost: Math.max(0, (op.after?.['cost'] as number) ?? op.costDelta),
       dependsOn: op.dependsOn ?? live?.dependsOn ?? [],
+      origin: op.kind === 'alternative' ? 'extra' : 'plan',
       version: 1,
       createdAt: now,
     };
@@ -568,6 +638,10 @@ function executeOp(w: World, cs: ChangeSet, op: Op, now: number): ExecutionOutco
       if (v === null) delete live.params[k];
       else live.params[k] = v;
     }
+    // Cost is part of the commitment, not the params — an update that
+    // re-prices (party size, delivery basket) must move it too, or the
+    // budget silently drops the charge.
+    live.cost = Math.max(0, live.cost + op.costDelta);
     live.version += 1;
   }
 
@@ -609,7 +683,10 @@ function maybeOfferAlternative(
 
   // Dispatched grocery: original order stands; offer a new top-up delivery
   // matching the new arrival window and party size, charged separately.
+  // Copy is generated from the real synthetic timestamps — never hardcoded.
   const arrival = parseLocal(w.facts.arrival)!;
+  const orig = live.params['windowStart'];
+  const origT = typeof orig === 'string' ? parseLocal(orig) : null;
   const altAfter: Record<string, JsonValue> = {
     windowStart: formatLocal(arrival - 60 * 60_000),
     windowEnd: formatLocal(arrival + 60 * 60_000),
@@ -618,31 +695,34 @@ function maybeOfferAlternative(
     note: 'Top-up delivery: the earlier order could not be changed after dispatch.',
     cost: 60,
   };
-  const altId = `grocery:topup-${hashParts('arr', w.facts.arrival)}`;
+  const altId = `grocery:topup-${hashParts('arr', w.facts.arrival, w.facts.guests)}`;
+  // A top-up order for these facts already exists — offering again would
+  // overwrite a real paid order, so don't.
+  if (w.commitments[altId] && w.commitments[altId]!.state !== 'cancelled') return;
   const alt: Op = {
-    id: hashParts('op', w.factsVersion, altId, 'alternative', altAfter),
+    id: hashParts('op', w.factsVersion, cs.id, altId, 'alternative', altAfter),
     kind: 'alternative',
     service: 'grocery',
     commitmentId: altId,
     isAlternative: true,
-    label: 'Add Saturday top-up delivery',
+    label: `Add top-up delivery for ${humanDayTime(arrival)}`,
     before: null,
     after: altAfter,
     patch: {},
     fee: 0,
     costDelta: 60,
     requiresConsent: true,
-    irreversibleNote:
-      'New charge on top of the dispatched order. The original delivery still arrives Friday and is billed.',
+    irreversibleNote: `New charge on top of the dispatched order. The original delivery still arrives ${origT !== null ? humanDayTime(origT) : 'as booked'} and is billed.`,
     dependsOn: ['arrival', 'guests'],
     status: 'proposed',
   };
+  if (op.changedBy) alt.changedBy = op.changedBy;
   if (cs.ops.every((o) => o.id !== alt.id)) {
     cs.ops.push(alt);
     emit(w, now, {
       type: 'changeset.proposed',
       factsVersion: w.factsVersion,
-      causedBy: 'arrival',
+      causedBy: op.changedBy?.[0] ?? 'arrival',
       payload: { changeSetId: cs.id, alternative: alt.id, becauseOf: op.id },
     });
   }
@@ -673,7 +753,7 @@ export function opSignature(o: Pick<Op, 'kind' | 'commitmentId' | 'after'>): str
  *  to surface the remaining honest path. */
 export function repropose(w: World, now: number, trigger = 're-plan'): ChangeSet {
   w.journal.push({ t: now, type: 'repropose', trigger });
-  const cs = propose(w, now, trigger);
+  const cs = propose(w, now, trigger, [...factsChangedAt(w, w.factsVersion)]);
   const sigs = declinedSignatures(w);
   for (const o of cs.ops) {
     if (sigs.has(opSignature(o))) {
@@ -731,7 +811,7 @@ function applyJournal(w: World, entry: World['journal'][number]): void {
       break;
     }
     case 'serviceEvent': {
-      applyServiceEvent(w, entry.commitmentId, entry.to, entry.t);
+      applyServiceEvent(w, entry.commitmentId, entry.to, entry.t, entry.booking);
       break;
     }
     case 'repropose': {
@@ -797,33 +877,44 @@ export function receiptsForFact(w: World, fact: FactKey): Receipt {
   return { fact, factsVersion: w.factsVersion, ops, events };
 }
 
-/** Causal recall: "what changed because of the flight/arrival?" returns the
- *  commitments whose params were touched by a facts.changed on `fact`. */
+/** Causal recall: "what changed because of the flight/arrival?" answered
+ *  strictly from the ledger — a fact only counts as the cause when a
+ *  facts.changed event for it exists at the op's facts version. Ops that are
+ *  approved but not yet executed are reported as pending, never as changed. */
 export function recallByFact(w: World, fact: FactKey): {
   fact: FactKey;
-  changedCommitments: { id: string; label: string; whatChanged: Record<string, JsonValue> }[];
+  changedCommitments: {
+    id: string;
+    label: string;
+    whatChanged: Record<string, JsonValue>;
+    state: 'applied' | 'pending';
+  }[];
   unaffected: { id: string; label: string }[];
 } {
-  const changedIds = new Set<string>();
-  const patches: Record<string, Record<string, JsonValue>> = {};
+  const touched = new Map<string, { patch: Record<string, JsonValue>; state: 'applied' | 'pending' }>();
   for (const cs of w.changeSets) {
+    if (!factsChangedAt(w, cs.factsVersion).has(fact)) continue;
     for (const o of cs.ops) {
-      const dep = (w.commitments[o.commitmentId]?.dependsOn ?? []) as FactKey[];
-      const caused = dep.includes(fact) || o.isAlternative;
-      if (!caused) continue;
-      if (o.status === 'executed' || o.status === 'approved') {
-        changedIds.add(o.commitmentId);
-        patches[o.commitmentId] = { ...(patches[o.commitmentId] ?? {}), ...o.patch };
+      if (o.status === 'executed') {
+        touched.set(o.commitmentId, {
+          patch: { ...(touched.get(o.commitmentId)?.patch ?? {}), ...o.patch },
+          state: 'applied',
+        });
+      } else if (o.status === 'approved' || o.status === 'proposed') {
+        if (!touched.has(o.commitmentId)) {
+          touched.set(o.commitmentId, { patch: { ...o.patch }, state: 'pending' });
+        }
       }
     }
   }
-  const changedCommitments = [...changedIds].map((id) => ({
+  const changedCommitments = [...touched.entries()].map(([id, v]) => ({
     id,
     label: w.commitments[id]?.label ?? id,
-    whatChanged: patches[id] ?? {},
+    whatChanged: v.patch,
+    state: v.state,
   }));
   const unaffected = Object.values(w.commitments)
-    .filter((c) => c.state !== 'cancelled' && !changedIds.has(c.id))
+    .filter((c) => c.state !== 'cancelled' && !touched.has(c.id))
     .map((c) => ({ id: c.id, label: c.label }));
   return { fact, changedCommitments, unaffected };
 }
@@ -845,9 +936,9 @@ export function deserializeWorld(raw: string | null): World | null {
     if (parsed.v !== WORLD_SCHEMA_VERSION || !parsed.world) return null;
     const w = parsed.world;
     if (
-      typeof w.facts !== 'object' ||
+      typeof w.facts !== 'object' || w.facts === null ||
       typeof w.factsVersion !== 'number' ||
-      typeof w.commitments !== 'object' ||
+      typeof w.commitments !== 'object' || w.commitments === null ||
       !Array.isArray(w.changeSets) ||
       !Array.isArray(w.ledger) ||
       !Array.isArray(w.journal) ||
@@ -856,6 +947,63 @@ export function deserializeWorld(raw: string | null): World | null {
     ) {
       return null;
     }
+    // Nested shapes must be validated too — a persisted object that parses
+    // but is structurally wrong must not reach the renderer.
+    for (const c of Object.values(w.commitments)) {
+      if (
+        typeof c !== 'object' || c === null ||
+        typeof c.id !== 'string' ||
+        typeof c.label !== 'string' ||
+        typeof c.state !== 'string' ||
+        typeof c.cost !== 'number' ||
+        typeof c.params !== 'object' || c.params === null ||
+        typeof c.createdAt !== 'number' ||
+        !Array.isArray(c.dependsOn)
+      ) {
+        return null;
+      }
+    }
+    for (const cs of w.changeSets) {
+      if (
+        typeof cs !== 'object' || cs === null ||
+        typeof cs.id !== 'string' ||
+        typeof cs.factsVersion !== 'number' ||
+        !Array.isArray(cs.ops)
+      ) {
+        return null;
+      }
+      for (const o of cs.ops) {
+        if (
+          typeof o !== 'object' || o === null ||
+          typeof o.id !== 'string' ||
+          typeof o.kind !== 'string' ||
+          typeof o.status !== 'string' ||
+          typeof o.fee !== 'number' ||
+          typeof o.costDelta !== 'number'
+        ) {
+          return null;
+        }
+      }
+    }
+    for (const e of w.ledger) {
+      if (
+        typeof e !== 'object' || e === null ||
+        typeof e.seq !== 'number' ||
+        typeof e.t !== 'number' ||
+        typeof e.type !== 'string'
+      ) {
+        return null;
+      }
+    }
+    for (const j of w.journal) {
+      if (
+        typeof j !== 'object' || j === null ||
+        typeof j.t !== 'number' ||
+        typeof j.type !== 'string'
+      ) {
+        return null;
+      }
+    }
     if (validateFacts(w.facts).ok !== true) return null;
     return w;
   } catch {
@@ -863,18 +1011,14 @@ export function deserializeWorld(raw: string | null): World | null {
   }
 }
 
-/** Deep-equal the observable state of two worlds (replay equality check). */
+/** Deep-equal the complete normalized state of two worlds — facts,
+ *  commitments (state/params/cost/deps/origin/version), change sets with
+ *  every op choice and reason, ledger, journal, counters. Used by the
+ *  replay-equality property: two worlds are equal iff their serialized
+ *  forms canonicalize identically. */
 export function stateEquals(a: World, b: World): boolean {
-  const strip = (w: World) => ({
-    facts: w.facts,
-    factsVersion: w.factsVersion,
-    feesCharged: w.feesCharged,
-    commitments: Object.fromEntries(
-      Object.entries(w.commitments).map(([k, c]) => [
-        k,
-        { state: c.state, params: c.params, cost: c.cost, service: c.service },
-      ]),
-    ),
-  });
-  return canonical(strip(a) as unknown as JsonValue) === canonical(strip(b) as unknown as JsonValue);
+  return (
+    canonical(JSON.parse(serializeWorld(a)) as JsonValue) ===
+    canonical(JSON.parse(serializeWorld(b)) as JsonValue)
+  );
 }

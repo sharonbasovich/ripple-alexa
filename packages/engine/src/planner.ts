@@ -145,6 +145,7 @@ export function diff(
   live: Record<string, Commitment>,
   desired: DesiredCommitment[],
   factsVersion: number,
+  proposalSeq = 0,
 ): DiffResult {
   const ops: DiffResult['ops'] = [];
   const unaffected: Commitment[] = [];
@@ -153,7 +154,7 @@ export function diff(
   for (const d of desired) {
     const cur = live[d.id];
     if (!cur || cur.state === 'cancelled') {
-      ops.push(makeOp('create', d, null, clone(d.params), factsVersion, d.cost));
+      ops.push(makeOp('create', d, null, clone(d.params), factsVersion, proposalSeq, d.cost));
       continue;
     }
     if (paramsEqual(cur.params, d.params) && cur.cost === d.cost) {
@@ -162,16 +163,19 @@ export function diff(
     }
     const patch = paramPatch(cur.params, d.params);
     ops.push(
-      makeOp('update', d, clone(cur.params), clone(d.params), factsVersion, d.cost - cur.cost, patch),
+      makeOp('update', d, clone(cur.params), clone(d.params), factsVersion, proposalSeq, d.cost - cur.cost, patch),
     );
   }
 
+  // Only plan-managed commitments can be orphaned by the diff. 'extra'
+  // commitments (paid alternatives like a top-up delivery) are separate
+  // orders the service still honours — never auto-cancelled by a replan.
   const orphans = Object.values(live).filter(
-    (c) => !desiredIds.has(c.id) && c.state !== 'cancelled',
+    (c) => !desiredIds.has(c.id) && c.state !== 'cancelled' && c.origin !== 'extra',
   );
   for (const c of orphans) {
     ops.push({
-      id: hashParts('op', factsVersion, c.id, 'cancel'),
+      id: hashParts('op', factsVersion, proposalSeq, c.id, 'cancel'),
       kind: 'cancel',
       service: c.service,
       commitmentId: c.id,
@@ -190,8 +194,8 @@ function clone<T>(v: T): T {
 }
 
 /** Build a create op for a desired commitment (used for rebooks). */
-export function createOpFor(d: DesiredCommitment, factsVersion: number) {
-  return makeOp('create', d, null, d.params, factsVersion, d.cost);
+export function createOpFor(d: DesiredCommitment, factsVersion: number, proposalSeq = 0) {
+  return makeOp('create', d, null, d.params, factsVersion, proposalSeq, d.cost);
 }
 
 function makeOp(
@@ -200,11 +204,14 @@ function makeOp(
   before: Record<string, JsonValue> | null,
   after: Record<string, JsonValue> | null,
   factsVersion: number,
+  proposalSeq: number,
   costDelta: number,
   patch: Record<string, JsonValue> = {},
 ): DiffResult['ops'][number] {
   return {
-    id: hashParts('op', factsVersion, d.id, kind, after),
+    // proposalSeq makes each proposal a unique consent scope: a re-proposal
+    // of the same intent can never resolve to a superseded predecessor.
+    id: hashParts('op', factsVersion, proposalSeq, d.id, kind, after),
     kind,
     service: d.service,
     commitmentId: d.id,

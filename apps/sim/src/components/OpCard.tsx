@@ -1,6 +1,6 @@
 import * as E from '@ripple/engine';
 import type { ChangeSet, Op } from '@ripple/engine';
-import { describeOp, fmtParamValue } from '../state';
+import { describeOp, fmtParamValue, paramLabel } from '../state';
 
 const KIND_BADGE: Record<string, { label: string; cls: string }> = {
   create: { label: 'New booking', cls: 'kind-create' },
@@ -39,7 +39,7 @@ export function OpCard({
           <dl className="diff">
             {Object.entries(op.patch).map(([k, after]) => (
               <div key={k} className="diff-row">
-                <dt>{k}</dt>
+                <dt>{paramLabel(k)}</dt>
                 <dd>
                   {fmtParamValue(op.before![k])} → <strong>{fmtParamValue(after)}</strong>
                 </dd>
@@ -51,14 +51,16 @@ export function OpCard({
           <dl className="diff">
             {Object.entries(op.after).map(([k, v]) => (
               <div key={k} className="diff-row">
-                <dt>{k}</dt>
+                <dt>{paramLabel(k)}</dt>
                 <dd>{fmtParamValue(v)}</dd>
               </div>
             ))}
           </dl>
         )}
-        {op.dependsOn && (
-          <p className="cause">Because {op.dependsOn.join(' + ')} changed</p>
+        {op.changedBy && op.changedBy.length > 0 && (
+          <p className="cause">
+            Because {op.changedBy.map((fk) => E.FACT_LABEL[fk]).join(' + ')} changed
+          </p>
         )}
       </div>
 
@@ -92,6 +94,11 @@ export function OpCard({
       )}
       {status === 'executed' && <p className="ok-text">Applied.</p>}
       {status === 'approved' && <p className="ok-text">Approved — apply below.</p>}
+      {status === 'proposed' && op.reason && (
+        <p className="note" role="alert">
+          {op.reason}
+        </p>
+      )}
 
       {showButtons && (
         <div className="op-actions">

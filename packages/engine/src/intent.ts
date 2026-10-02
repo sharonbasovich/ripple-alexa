@@ -9,6 +9,9 @@ export type Intent =
   | { type: 'edit'; edits: FactEdit[]; describe: string }
   | { type: 'recall'; fact: FactKey; describe: string }
   | { type: 'status'; describe: string }
+  /** Ambiguous or negated utterance that LOOKS like an edit — we ask rather
+   *  than guess. Never mutates state. */
+  | { type: 'clarify'; message: string; examples: string[] }
   | { type: 'unknown'; examples: string[] };
 
 export const EXAMPLE_UTTERANCES = [
@@ -70,9 +73,39 @@ function dayIsoOn(targetDay: string, referenceT: number, minutes: number): strin
   return formatLocal(dayStart + minutes * 60_000);
 }
 
+// Negation / cancellation words that flip the apparent meaning of an
+// edit-shaped utterance. "My brother is NOT joining" must never become +1.
+const NEGATION =
+  /\b(?:not|n't|never|no longer|without|cancel(?:led|ed|s|ing)?)\b|\bdon'?t\b|\bdont\b|\bdoesn'?t\b|\bwon'?t\b|\bwont\b|\bisn'?t\b|\baren'?t\b|\bcan'?t\b|\bcouldn'?t\b|\bshouldn'?t\b|\bdidn'?t\b|\bwouldn'?t\b/;
+
+const EDIT_SHAPED =
+  /brother|sister|friend|partner|join|guest|adult|people|arriv|depart|leav|land|budget|move|change|set|push|\$?\d+/;
+
 export function parseUtterance(raw: string, facts: VisitFacts, _now: number): Intent {
   const text = raw.trim().toLowerCase().replace(/[.!]+$/, '');
   if (!text) return { type: 'unknown', examples: EXAMPLE_UTTERANCES };
+
+  // Negated or cancellation-shaped utterance that resembles an edit:
+  // clarify instead of guessing. Checked BEFORE any edit pattern.
+  if (NEGATION.test(text) && EDIT_SHAPED.test(text)) {
+    return {
+      type: 'clarify',
+      message:
+        "That sounds like a negation or a cancelled plan — nothing was changed. If you meant to update a fact, try one of these:",
+      examples: EXAMPLE_UTTERANCES,
+    };
+  }
+
+  // Malformed numbers must never partial-parse into a plausible edit:
+  // "2.5 guests" is not 2 and not 5; "-2 guests" is not 2.
+  if (/\d+\.\d+|-\s*\d/.test(text) && EDIT_SHAPED.test(text)) {
+    return {
+      type: 'clarify',
+      message:
+        'I can only take whole numbers of guests and whole-dollar budgets — nothing was changed. Try:',
+      examples: EXAMPLE_UTTERANCES,
+    };
+  }
 
   // ---- recall / status -------------------------------------------------
   if (/what changed|what.*because of|why did|recall/.test(text)) {
@@ -91,6 +124,14 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
 
   // ---- guest count -----------------------------------------------------
   if (/brother|sister|friend|partner|one more|another (adult|guest|person)|joining|joins/.test(text)) {
+    // relative references without an action word are ambiguous
+    if (/asked|about|wonder|think|maybe|might|if |question|told/.test(text)) {
+      return {
+        type: 'clarify',
+        message: 'I heard you mention someone — but not a clear change. Nothing was altered. Try:',
+        examples: EXAMPLE_UTTERANCES,
+      };
+    }
     const guests = facts.guests + 1;
     return {
       type: 'edit',
@@ -98,7 +139,7 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
       describe: `Guest count ${facts.guests} → ${guests}`,
     };
   }
-  let m = /(\d+)\s*(guests?|adults?|people)/.exec(text);
+  let m = /(?<![\d.])(\d+)(?![\d.])\s*(guests?|adults?|people)/.exec(text);
   if (m) {
     const guests = parseInt(m[1]!, 10);
     return {
@@ -109,7 +150,7 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
   }
 
   // ---- budget ----------------------------------------------------------
-  m = /budget\s*(?:to|of|=|:)?\s*\$?\s*(\d+)/.exec(text) ?? /\$(\d+)\s*budget/.exec(text);
+  m = /budget\s*(?:to|of|=|:)?\s*\$?\s*(\d+)(?![\d.])/.exec(text) ?? /(?<![\d.])\$(\d+)(?![\d.])\s*budget/.exec(text);
   if (m) {
     const budget = parseInt(m[1]!, 10);
     return {
@@ -119,67 +160,88 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
     };
   }
 
-  // ---- arrival / departure ---------------------------------------------
-  const dayNames = Object.keys(DAY_INDEX).join('|');
-  const timeRe = `(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)`;
-
-  // "move arrival to saturday 9:40" / "arrive saturday 9:40" / "arrival sat 9:40"
-  m = new RegExp(`(?:move|change|set|push)?\\s*(?:the\\s+)?arrival\\s+(?:to\\s+)?(${dayNames})\\s*(?:at\\s+)?${timeRe}`).exec(text)
-    ?? new RegExp(`arriv(?:e|al|ing)\\s+(?:on\\s+)?(${dayNames})\\s*(?:at\\s+)?${timeRe}`).exec(text)
-    ?? new RegExp(`land(?:s|ing)?\\s+(${dayNames})\\s*(?:at\\s+)?${timeRe}`).exec(text);
-  if (m) {
-    const minutes = parseClock(m[2]!);
-    if (minutes !== null) {
-      const ref = parseLocal(facts.arrival)!;
-      const iso = dayIsoOn(m[1]!, ref, minutes);
+  // ---- arrival / departure (compound commands must parse BOTH or neither)
+  const arrivalEdit = tryArrivalEdit(text, facts);
+  const departureEdit = tryDepartureEdit(text, facts);
+  const mentionsArrival = /arriv|land/.test(text);
+  const mentionsDeparture = /depart|leav/.test(text);
+  if (mentionsArrival && mentionsDeparture) {
+    if (arrivalEdit !== null && departureEdit !== null) {
       return {
         type: 'edit',
-        edits: [{ key: 'arrival', value: iso }],
-        describe: `Arrival → ${humanDay(parseLocal(iso)!)} ${m[2]}`,
+        edits: [arrivalEdit, departureEdit],
+        describe: 'Arrival and departure updated together',
       };
     }
+    return {
+      type: 'clarify',
+      message:
+        "I heard both an arrival and a departure but couldn't parse both cleanly — nothing was changed. Try one fact at a time, or:",
+      examples: EXAMPLE_UTTERANCES,
+    };
   }
-
-  // "arrival 9:40" (same day, just time)
-  m = new RegExp(`arriv(?:e|al|ing)\\s+(?:at\\s+)?${timeRe}$`).exec(text);
-  if (m) {
-    const minutes = parseClock(m[1]!);
-    if (minutes !== null) {
-      const iso = minutesToIsoOn(facts.arrival, minutes);
-      return {
-        type: 'edit',
-        edits: [{ key: 'arrival', value: iso }],
-        describe: `Arrival → ${m[1]!} same day`,
-      };
-    }
-  }
-
-  // "departure sunday 5pm" / "leave sunday at 5pm" / "leaving sunday 17:00"
-  m = new RegExp(`(?:depart(?:ure|ing)?|leav(?:e|ing))\\s+(?:on\\s+)?(${dayNames})\\s*(?:at\\s+)?${timeRe}`).exec(text);
-  if (m) {
-    const minutes = parseClock(m[2]!);
-    if (minutes !== null) {
-      const ref = parseLocal(facts.departure)!;
-      const iso = dayIsoOn(m[1]!, ref, minutes);
-      return {
-        type: 'edit',
-        edits: [{ key: 'departure', value: iso }],
-        describe: `Departure → ${humanDay(parseLocal(iso)!)} ${m[2]!}`,
-      };
-    }
-  }
-
-  // "earlier"/"later" nudges
-  m = /arriv(?:e|al|ing)\s+(\d+)\s*(hour|minute)s?\s+(earlier|later)/.exec(text);
-  if (m) {
-    const amt = parseInt(m[1]!, 10) * (m[2] === 'hour' ? 60 : 1) * (m[3] === 'earlier' ? -1 : 1);
-    const iso = formatLocal(parseLocal(facts.arrival)! + amt * 60_000);
+  if (arrivalEdit !== null) {
     return {
       type: 'edit',
-      edits: [{ key: 'arrival', value: iso }],
-      describe: `Arrival ${amt > 0 ? '+' : ''}${amt} minutes`,
+      edits: [arrivalEdit],
+      describe: `Arrival → ${humanDay(parseLocal(arrivalEdit.value)!)}`,
+    };
+  }
+  if (departureEdit !== null) {
+    return {
+      type: 'edit',
+      edits: [departureEdit],
+      describe: `Departure → ${humanDay(parseLocal(departureEdit.value)!)}`,
+    };
+  }
+  if (mentionsArrival || mentionsDeparture) {
+    return {
+      type: 'clarify',
+      message: 'I heard a travel update but could not parse the date or time — nothing was changed. Try:',
+      examples: EXAMPLE_UTTERANCES,
     };
   }
 
   return { type: 'unknown', examples: EXAMPLE_UTTERANCES };
+}
+
+const DAY_NAMES = Object.keys(DAY_INDEX).join('|');
+const TIME_RE = `(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)`;
+
+function tryArrivalEdit(text: string, facts: VisitFacts): { key: 'arrival'; value: string } | null {
+  let m =
+    new RegExp(`(?:move|change|set|push)?\\s*(?:the\\s+)?arrival\\s+(?:to\\s+)?(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`).exec(text) ??
+    new RegExp(`arriv(?:e|al|ing)\\s+(?:on\\s+)?(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`).exec(text) ??
+    new RegExp(`land(?:s|ing)?\\s+(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`).exec(text);
+  if (m) {
+    const minutes = parseClock(m[2]!);
+    if (minutes !== null) {
+      return { key: 'arrival', value: dayIsoOn(m[1]!, parseLocal(facts.arrival)!, minutes) };
+    }
+    return null;
+  }
+  // "arrival 9:40" (same day, just time)
+  m = new RegExp(`arriv(?:e|al|ing)\\s+(?:at\\s+)?${TIME_RE}$`).exec(text);
+  if (m) {
+    const minutes = parseClock(m[1]!);
+    if (minutes !== null) return { key: 'arrival', value: minutesToIsoOn(facts.arrival, minutes) };
+    return null;
+  }
+  // "earlier"/"later" nudges
+  m = /arriv(?:e|al|ing)\s+(\d+)\s*(hour|minute)s?\s+(earlier|later)/.exec(text);
+  if (m) {
+    const amt = parseInt(m[1]!, 10) * (m[2] === 'hour' ? 60 : 1) * (m[3] === 'earlier' ? -1 : 1);
+    return { key: 'arrival', value: formatLocal(parseLocal(facts.arrival)! + amt * 60_000) };
+  }
+  return null;
+}
+
+function tryDepartureEdit(text: string, facts: VisitFacts): { key: 'departure'; value: string } | null {
+  const m = new RegExp(
+    `(?:depart(?:ure|ing)?|leav(?:e|ing))\\s+(?:on\\s+)?(${DAY_NAMES})\\s*(?:at\\s+)?${TIME_RE}`,
+  ).exec(text);
+  if (!m) return null;
+  const minutes = parseClock(m[2]!);
+  if (minutes === null) return null;
+  return { key: 'departure', value: dayIsoOn(m[1]!, parseLocal(facts.departure)!, minutes) };
 }

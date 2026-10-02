@@ -13,6 +13,7 @@ const EVENT_LABEL: Record<string, string> = {
   'changeset.superseded': 'Superseded by newer change',
   'op.executed': 'Applied',
   'op.rejected': 'Rejected at execution',
+  'op.requoted': 'Price changed — fresh decision required',
   'fee.charged': 'Fee charged',
   'service.transition': 'Service updated',
   'service.stale_event': 'Stale async event ignored',

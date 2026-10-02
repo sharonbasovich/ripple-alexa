@@ -32,14 +32,23 @@ export function load(): SimState | null {
   }
 }
 
+let lastPersistError: string | null = null;
+
+/** True when the last persist attempt failed (storage denied/full) — the
+ *  app keeps working in memory but must say so honestly. */
+export function persistFailed(): string | null {
+  return lastPersistError;
+}
+
 export function persist(s: SimState): void {
   try {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ now: s.now, world: E.serializeWorld(s.world) }),
     );
-  } catch {
-    // storage full/denied — app keeps working in memory
+    lastPersistError = null;
+  } catch (e) {
+    lastPersistError = e instanceof Error ? e.message : 'storage write failed';
   }
 }
 
@@ -112,6 +121,29 @@ export function runUtterance(w: World, text: string, now: number): Intent {
   return E.parseUtterance(text, w.facts, now);
 }
 
+/** Edits collected from the fact editor form — numeric fields are coerced
+ *  to integers here (the engine rightly rejects string values). Returns
+ *  null when a numeric field is not a nonempty finite integer. */
+export function collectEdits(
+  facts: E.VisitFacts,
+  form: { arrival: string; departure: string; guests: string; budget: string },
+): FactEdit[] | null {
+  const edits: FactEdit[] = [];
+  if (form.arrival !== facts.arrival) edits.push({ key: 'arrival', value: form.arrival });
+  if (form.departure !== facts.departure) edits.push({ key: 'departure', value: form.departure });
+  if (form.guests !== String(facts.guests)) {
+    const n = Number(form.guests);
+    if (!Number.isInteger(n)) return null;
+    edits.push({ key: 'guests', value: n });
+  }
+  if (form.budget !== String(facts.budget)) {
+    const n = Number(form.budget);
+    if (!Number.isInteger(n)) return null;
+    edits.push({ key: 'budget', value: n });
+  }
+  return edits;
+}
+
 export function describeOp(op: Op): string {
   switch (op.kind) {
     case 'create':
@@ -123,6 +155,28 @@ export function describeOp(op: Op): string {
     case 'alternative':
       return `Alternative: ${op.label}`;
   }
+}
+
+const PARAM_LABEL: Record<string, string> = {
+  windowStart: 'Delivery window opens',
+  windowEnd: 'Delivery window closes',
+  partySize: 'Party size',
+  guests: 'Guests',
+  items: 'Items',
+  remindAt: 'Reminder at',
+  runAt: 'Runs at',
+  start: 'Starts',
+  end: 'Ends',
+  time: 'Time',
+  title: 'Title',
+  cost: 'Cost (fictional)',
+  note: 'Note',
+};
+
+/** Human label for a commitment param key — judges should never see raw
+ *  camelCase field names. */
+export function paramLabel(k: string): string {
+  return PARAM_LABEL[k] ?? k;
 }
 
 export function fmtParamValue(v: unknown): string {

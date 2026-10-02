@@ -44,7 +44,7 @@ npm run build      # production build (apps/sim/dist)
 npm run typecheck  # strict TS across workspaces
 npm run lint       # eslint
 npm test           # engine: unit + integration + property tests
-npm run test:browser -w @ripple/sim  # sim state-layer tests
+npm run test:sim -w @ripple/sim       # sim state-layer tests (Node/vitest — not a browser run)
 ```
 
 The deployed site is a fully static build — no backend, no network calls, no

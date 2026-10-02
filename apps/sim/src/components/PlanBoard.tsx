@@ -1,6 +1,6 @@
 import * as E from '@ripple/engine';
 import type { World } from '@ripple/engine';
-import { fmtParamValue } from '../state';
+import { fmtParamValue, paramLabel } from '../state';
 
 const SERVICE_ORDER: E.ServiceId[] = ['calendar', 'grocery', 'restaurant', 'routines', 'pickup'];
 
@@ -54,7 +54,7 @@ export function PlanBoard({
                 <dl className="params">
                   {Object.entries(c.params).map(([k, v]) => (
                     <div key={k}>
-                      <dt>{k}</dt>
+                      <dt>{paramLabel(k)}</dt>
                       <dd>{fmtParamValue(v)}</dd>
                     </div>
                   ))}

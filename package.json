@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Ripple — a simulated Alexa+ causal reconciliation demo. Change one thing; Alexa repairs only what depended on it.",
+  "description": "Ripple \u2014 a simulated Alexa+ causal reconciliation demo. Change one thing; Alexa repairs only what depended on it.",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -13,9 +13,9 @@
     "build": "npm run build -w @ripple/engine && npm run build -w @ripple/sim",
     "typecheck": "npm run typecheck -w @ripple/engine && npm run typecheck -w @ripple/sim",
     "test": "npm run test -w @ripple/engine",
-    "test:browser": "npm run test -w @ripple/sim",
     "lint": "eslint .",
-    "dev": "npm run dev -w @ripple/sim"
+    "dev": "npm run dev -w @ripple/sim",
+    "test:sim": "npm run test -w @ripple/sim"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

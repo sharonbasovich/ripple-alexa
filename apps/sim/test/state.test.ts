@@ -20,7 +20,6 @@ const localStorageStub = {
 };
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageStub, writable: true });
 
-const NOW = E.FIXTURE_NOW;
 
 beforeEach(() => {
   store.clear();

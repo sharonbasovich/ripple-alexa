@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { FactEdit, World } from '@ripple/engine';
+import { collectEdits } from '../state';
 
 // datetime-local values are wall-clock strings like 2026-10-16T18:05 —
 // the engine's simulated local time uses exactly this format.
-const toInput = (iso: string) => iso;
 
 export function FactPanel({
   world,
@@ -13,19 +13,32 @@ export function FactPanel({
   onPreview: (edits: FactEdit[]) => void;
 }) {
   const f = world.facts;
-  const [arrival, setArrival] = useState(toInput(f.arrival));
-  const [departure, setDeparture] = useState(toInput(f.departure));
+  const [arrival, setArrival] = useState(f.arrival);
+  const [departure, setDeparture] = useState(f.departure);
   const [guests, setGuests] = useState(String(f.guests));
   const [budget, setBudget] = useState(String(f.budget));
   const [dirty, setDirty] = useState(false);
 
+  // Resync untouched inputs whenever facts change elsewhere (chips,
+  // utterances, reset) — the "adjust state during render" pattern. Without
+  // this a stale field could silently revert a newer fact on the next submit.
+  const [lastVersion, setLastVersion] = useState(world.factsVersion);
+  if (lastVersion !== world.factsVersion) {
+    setLastVersion(world.factsVersion);
+    setArrival(f.arrival);
+    setDeparture(f.departure);
+    setGuests(String(f.guests));
+    setBudget(String(f.budget));
+    setDirty(false);
+  }
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const edits: FactEdit[] = [];
-    if (arrival !== f.arrival) edits.push({ key: 'arrival', value: arrival });
-    if (departure !== f.departure) edits.push({ key: 'departure', value: departure });
-    if (Number(guests) !== f.guests) edits.push({ key: 'guests', value: guests });
-    if (Number(budget) !== f.budget) edits.push({ key: 'budget', value: budget });
+    const edits = collectEdits(f, { arrival, departure, guests, budget });
+    if (edits === null) {
+      onPreview([{ key: 'guests', value: 'invalid' }]); // surfaces a validation error honestly
+      return;
+    }
     if (edits.length) onPreview(edits);
     setDirty(false);
   };
