@@ -27,6 +27,11 @@ body {
 
 .app { max-width: 980px; margin: 0 auto; padding: 0 20px 64px; }
 .app.device-phone { max-width: 400px; border-left: 1px dashed var(--line); border-right: 1px dashed var(--line); }
+.app.device-phone .board, .app.device-phone .editors { grid-template-columns: 1fr; }
+.app.device-phone .params dt, .app.device-phone .diff-row dt { min-width: 0; }
+.app.device-phone .sim-buttons { margin-left: 0; }
+.app.device-phone .composer .preset { align-self: stretch; }
+.app.device-phone .hero-flow { margin-left: 0; }
 .app.compact main { zoom: 0.92; }
 
 .sim-banner {
@@ -68,6 +73,15 @@ body {
 .ctl { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--ink-dim); cursor: pointer; }
 
 main { display: grid; gap: 20px; }
+main > * { min-width: 0; }
+.board, .op-list, .editors, .receipts-body, .receipt-by-fact { min-width: 0; }
+.commit, .op-card, .svc, .modal { min-width: 0; max-width: 100%; }
+.diff-row dd, .params dd, .facts-line, .op-card, .commit, .receipt-fact li { overflow-wrap: anywhere; }
+.diff-row { flex-wrap: wrap; }
+.utterance form { flex-wrap: wrap; }
+.utterance input { flex: 1 1 160px; min-width: 0; }
+input, select, button { max-width: 100%; }
+button { overflow-wrap: anywhere; }
 .primary-card, .choices, .editors, .receipts, .recall, .sim-controls {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 20px; box-shadow: var(--shadow);

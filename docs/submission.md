@@ -48,9 +48,11 @@ tests. `apps/sim` is a Vite+React single-page app with an utterance
 composer, a fact editor, a causal receipt ledger, and an explicit
 simulated-clock control. `apps/mcp-server` wraps the same engine as a
 localhost-only MCP inspection tool for developers — it is not an Alexa
-add-on and makes no network calls off the loopback interface.
+add-on and makes no network calls off the loopback interface. Consent can be
+bound to the reviewed payload hash + facts revision, or taken at face value
+by op id; either way it stays a developer inspector, not a consumer surface.
 
-**Verification**: 87 automated tests — unit + integration + a property suite
+**Verification**: 88 automated tests — unit + integration + a property suite
 running 1,000+ randomized action sequences per run asserting idempotence,
 unaffected-action preservation, minimal diffs, consent/fee gating, sunk-fee
 honesty, full-state replay equality, and causal provenance — plus targeted

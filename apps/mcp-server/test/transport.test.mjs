@@ -93,6 +93,21 @@ describe('MCP inspection wrapper over HTTP', () => {
     expect(res.structuredContent.results[0].reason).toBe('not-found');
   });
 
+  it('caller-supplied payload hash binds consent: wrong hash rejected, right hash approves', async () => {
+    const ch = await call('apply_change', { edits: [{ key: 'arrival', value: '2026-10-17T09:40' }] });
+    const op = ch.structuredContent.ops.find((o) => o.kind === 'update');
+    expect(op.payloadHash).toMatch(/^[a-f0-9]+$/);
+    const bad = await call('confirm_ops', { ops: [{ id: op.id, payloadHash: 'deadbeef' }] });
+    expect(bad.structuredContent.results[0].ok).toBe(false);
+    expect(bad.structuredContent.results[0].reason).toBe('payload-mismatch');
+    const staleRev = await call('confirm_ops', { ops: [{ id: op.id, factsVersion: op.factsVersion + 9 }] });
+    expect(staleRev.structuredContent.results[0].reason).toBe('revision-mismatch');
+    const good = await call('confirm_ops', {
+      ops: [{ id: op.id, payloadHash: op.payloadHash, factsVersion: op.factsVersion }],
+    });
+    expect(good.structuredContent.results[0].ok).toBe(true);
+  });
+
   it('get_receipt returns provenance-stamped ops', async () => {
     const res = await call('get_receipt', { fact: 'guests' });
     const s = res.structuredContent;

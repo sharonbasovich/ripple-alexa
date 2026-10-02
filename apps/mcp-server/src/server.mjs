@@ -83,6 +83,8 @@ export function createRippleMcpServer(w) {
           ops: cs.ops.map((o) => ({
             id: o.id, kind: o.kind, commitmentId: o.commitmentId, label: o.label,
             fee: o.fee, costDelta: o.costDelta, requiresConsent: o.requiresConsent,
+            payloadHash: E.consentFor(w, o).payloadHash,
+            factsVersion: cs.factsVersion,
           })),
         },
       );
@@ -95,17 +97,44 @@ export function createRippleMcpServer(w) {
       {
         title: `${how === 'approve' ? 'Approve' : 'Decline'} operations`,
         description:
-          'Decide proposed ops by exact id at the current facts version. Stale/expired consent is rejected honestly.',
-        inputSchema: { opIds: z.array(z.string()).min(1) },
+          'Decide proposed ops by exact id. Optionally pass the payloadHash/factsVersion ' +
+          'returned by apply_change to bind consent to the reviewed payload — a mismatch is ' +
+          'rejected honestly. Stale/expired consent is rejected either way.',
+        inputSchema: {
+          opIds: z.array(z.string()).min(1).optional(),
+          ops: z
+            .array(
+              z.object({
+                id: z.string(),
+                payloadHash: z.string().optional(),
+                factsVersion: z.number().int().optional(),
+              }),
+            )
+            .min(1)
+            .optional(),
+        },
       },
-      ({ opIds }) => {
-        const results = opIds.map((id) => {
+      ({ opIds, ops }) => {
+        const specs = (ops ?? []).length
+          ? ops
+          : (opIds ?? []).map((id) => ({ id }));
+        if (!specs.length) {
+          return text('Provide opIds or ops.', { ok: false, reason: 'no-ops' });
+        }
+        const results = specs.map((spec) => {
           const cs = w.changeSets[w.changeSets.length - 1];
-          const op = cs?.ops.find((o) => o.id === id);
-          if (!op) return { opId: id, ok: false, reason: 'not-found' };
+          const op = cs?.ops.find((o) => o.id === spec.id);
+          if (!op) return { opId: spec.id, ok: false, reason: 'not-found' };
+          const consent = E.consentFor(w, op);
+          if (spec.payloadHash !== undefined && spec.payloadHash !== consent.payloadHash) {
+            return { opId: spec.id, ok: false, reason: 'payload-mismatch' };
+          }
+          if (spec.factsVersion !== undefined && spec.factsVersion !== consent.factsVersion) {
+            return { opId: spec.id, ok: false, reason: 'revision-mismatch' };
+          }
           const res =
-            how === 'approve' ? E.approve(w, E.consentFor(w, op), E.FIXTURE_NOW) : E.decline(w, E.consentFor(w, op), E.FIXTURE_NOW);
-          return { opId: id, ok: res.ok, reason: res.ok ? how : res.reason };
+            how === 'approve' ? E.approve(w, consent, E.FIXTURE_NOW) : E.decline(w, consent, E.FIXTURE_NOW);
+          return { opId: spec.id, ok: res.ok, reason: res.ok ? how : res.reason };
         });
         return text(`${results.filter((r) => r.ok).length}/${results.length} ${how}d.`, { ok: true, results });
       },

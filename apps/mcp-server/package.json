@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.mjs",
+    "pretest": "npm run build -w @ripple/engine --if-present",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -16,6 +17,6 @@
   "devDependencies": {
     "@types/node": "22.15.0",
     "typescript": "5.9.2",
-    "vitest": "3.2.4"
+    "vitest": "5.0.3"
   }
 }
