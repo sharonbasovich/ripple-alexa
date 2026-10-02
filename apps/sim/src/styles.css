@@ -246,3 +246,8 @@ input:focus-visible { outline: 3px solid var(--accent-soft); }
   .sim-buttons { margin-left: 0; }
   .app.device-desktop { padding: 0 12px 64px; }
 }
+
+.composer { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding: 12px 14px; background: #faf3ea; border: 1px solid var(--line); border-radius: 12px; }
+.composer .preset { align-self: flex-start; }
+.composer .chips { margin: 0; }
+.affected-count { margin: 0; font-size: 0.85rem; color: var(--accent-deep); font-weight: 600; }

@@ -209,6 +209,41 @@ export default function App() {
             </div>
           </div>
 
+          <div className="composer" aria-label="Make a change">
+            <button
+              className="primary preset"
+              onClick={() =>
+                applyEdits([
+                  { key: 'arrival', value: '2026-10-17T09:40' },
+                  { key: 'guests', value: w.facts.guests + 1 },
+                ])
+              }
+            >
+              New plan: arrive Sat 9:40 · one more guest
+            </button>
+            <div className="chips">
+              {CHIPS.map((c) => (
+                <button key={c} className="chip" onClick={() => onUtter(c)}>
+                  {c}
+                </button>
+              ))}
+            </div>
+            <UtteranceInput onSubmit={onUtter} />
+            {openCs && (
+              <p className="affected-count" role="status">
+                {affectedIds(w).size} of {Object.keys(w.commitments).length} commitments
+                depend on the changed facts — decisions below.
+              </p>
+            )}
+            {examples.length > 0 && (
+              <ul className="examples">
+                {examples.map((e) => (
+                  <li key={e}>{e}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {!budget.feasible && (
             <p className="warn" role="alert">
               This plan cannot satisfy the ${w.facts.budget} budget — projected spend is $
@@ -220,26 +255,8 @@ export default function App() {
           <PlanBoard world={w} affectedIds={affectedIds(w)} />
         </section>
 
-        <section className="editors" aria-label="Make a change">
+        <section className="editors" aria-label="Edit facts directly">
           <FactPanel world={w} onPreview={applyEdits} />
-          <div className="utterance">
-            <h3>Say it instead</h3>
-            <UtteranceInput onSubmit={onUtter} />
-            <div className="chips">
-              {CHIPS.map((c) => (
-                <button key={c} className="chip" onClick={() => onUtter(c)}>
-                  {c}
-                </button>
-              ))}
-            </div>
-            {examples.length > 0 && (
-              <ul className="examples">
-                {examples.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
-            )}
-          </div>
         </section>
 
         {openCs && (
