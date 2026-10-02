@@ -128,8 +128,9 @@ entrants validate designs against something real.
 
 ## Honest summary of remaining limits
 
-- The app is a **simulation**: no Alexa+ SDK exists to integrate with, and no
-  claim of one is made anywhere.
+- The app is a **simulation**: official Alexa+ preview tooling is unavailable
+  to hackathon entrants (per the contest FAQ), and no claim of Alexa+
+  integration is made anywhere.
 - `localStorage` persistence is single-tab and device-local; no cross-tab or
   cross-device sync is implemented or claimed.
 - The intent grammar is deliberately bounded — unsupported phrasing returns

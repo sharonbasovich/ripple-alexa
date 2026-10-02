@@ -103,7 +103,7 @@ deliberately bounded and clarifies rather than guesses; no Amazon marks.
 
 **Demo video**: `docs/demo.mp4` (48s, under the 3:00 limit) — real app footage
 with burned-in captions; transcript at `docs/demo-captions.txt`. Public
-video upload and Devpost submission remain separate, human steps.
+video upload and Devpost submission are separate steps outside this repo — not a required manual handoff.
 
 **Product feedback**: see `docs/feedback.md`; friction observations are in
 `docs/friction-log.md`.

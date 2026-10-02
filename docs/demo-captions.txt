@@ -1,42 +1,44 @@
-Ripple demo — captions transcript (docs/demo.mp4, 0:48)
+Ripple demo — captions transcript (docs/demo.mp4, 1:49, 1280x900)
 
 Burned-in captions appear at the bottom of the frame at these beats:
 
-00:00 – 00:05  A weekend plan: 7 commitments across 5 services - $196 of $300 budget
-00:05 – 00:07  Preset change: arrive Sat 9:40 + one more guest - preview first
-00:07 – 00:17  Decisions: $75 cancel fee (inside 24h); grocery already dispatched
-00:17 – 00:19  Apply: approved ops run; dispatched grocery honestly rejected
-00:19 – 00:23  Alternative offered: Saturday top-up +$60 - declined
-00:23 – 00:28  Repeating the same change is a safe no-op
-00:28 – 00:30  Reload: decisions and ledger persist
-00:30 – 00:33  Recall: what changed because of the flight?
-00:33 – 00:38  Fact editor: budget $300 to $350 - preview, then apply
-00:38 – 00:46  Phone size: single column, no clipping
-00:46 – 00:48  Reset clears synthetic data only - fresh fixture restored
+00:00 – 00:06  A fictional weekend plan: parents fly in Fri 18:05, leave Sun 17:00
+00:06 – 00:14  7 commitments across 5 services - $196 of $300 budget
+00:14 – 00:24  New plan: arrive Sat 9:40, one more guest - preview shows the diff
+00:24 – 00:41  Only dependents need decisions - cancel costs $75, consented once
+00:41 – 00:53  Dispatched grocery honestly rejected; priced alternative declined
+00:53 – 01:02  Repeating the same change is a safe no-op
+01:02 – 01:12  Reload: decisions and ledger persist
+01:12 – 01:20  Recall: what actually changed because of the flight
+01:20 – 01:30  Unscripted edit: budget $300 to $350 - preview then apply
+01:30 – 01:40  Phone-size view: single column, no clipping
+01:40 – 01:49  Reset clears synthetic data only
 
 Demo arc (what is shown):
-1. Plan overview — fixture: parents visit Fri 18:05 to Sun 17:00, 2 adults,
-   $300 budget, grocery delivery already DISPATCHED.
-2. Preset chip "New plan: arrive Sat 9:40 - one more guest" opens the
-   preview modal: arrival Fri 18:05 -> Sat 09:40, guests 2 -> 3, affected vs
-   untouched commitments, "Departure stays Sunday 17:00".
-3. Apply creates the "Needs your decision" change set. Grocery update,
-   $75 dinner cancel, and dinner rebook are approved; coffee update declined.
-4. "Apply approved changes": cancel + rebook execute; grocery update is
-   truthfully REJECTED at execution ("Delivery already dispatched").
-5. The engine offers an alternative Saturday top-up delivery (+$60) with an
-   honest note that the original delivery still arrives and is billed —
-   declined here.
-6. Clicking the arrival chip again: preview and apply both report
+1. Hook — hero states the fictional fixture: parents visit Fri 18:05 to
+   Sun 17:00, 2 adults, $300 budget. Banner notes all services are fictional.
+2. Plan overview — scroll the board: 7 commitments across 5 services,
+   grocery already DISPATCHED, $196 of $300 committed.
+3. Preset "New plan: arrive Sat 9:40 - one more guest" opens the preview:
+   arrival Fri 18:05 -> Sat 09:40, guests 2 -> 3, affected vs untouched
+   commitments, "Departure stays Sunday 17:00".
+4. Apply creates the "Needs your decision" change set. Grocery update,
+   $75 dinner cancel ("Approve with $75 fee"), and dinner rebook are
+   approved; the coffee update is declined. "Apply approved changes"
+   executes: cancel + rebook applied; grocery update truthfully REJECTED
+   ("Delivery already dispatched"). A priced Saturday top-up alternative
+   (+$60) is offered with an honest note that the original delivery still
+   arrives and is billed - then declined.
+5. Clicking the arrival chip again: preview and apply both report
    "No fact actually changed" (idempotent).
-7. F5 reload — facts, decisions, and ledger persist from localStorage.
-8. Recall query "What changed because of the flight?" lists the four
-   commitments that actually changed because of arrival, plus unaffected ones.
-9. Direct fact edit: budget $300 -> $350 via the fact editor with
-   preview-before-apply; the over-budget warning clears.
-10. "Phone size" toggle — app renders a narrow single-column layout with
-    no clipping.
-11. "Reset demo — clears synthetic local data only" restores the fixture.
+6. Page reload - facts, decisions, and ledger persist.
+7. Recall "What changed because of the flight?" lists only commitments
+   actually changed by arrival, with their real statuses (applied /
+   proposed, awaiting decision), plus unaffected ones.
+8. Unscripted fact edit: Budget $300 -> $350, preview then apply.
+9. "Phone size" toggle - single-column layout, no clipping.
+10. "Reset demo - clears synthetic local data only" restores the fixture.
 
-Recorded on commit 7a2697f (a11y palette + semantic board build).
-All services, prices and policies are fictional; nothing real is booked.
+Recorded with playwright recordVideo at 1280x900 on HEAD 336b2d3
+(plus working-tree UI; identical visuals). No audio. All services, prices
+and policies are fictional; nothing real is booked.
