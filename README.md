@@ -45,6 +45,9 @@ npm run typecheck  # strict TS across workspaces
 npm run lint       # eslint
 npm test           # engine: unit + integration + property tests
 npm run test:sim -w @ripple/sim       # sim state-layer tests (Node/vitest — not a browser run)
+npm run test -w @ripple/mcp-server    # MCP wrapper: real HTTP transport + engine parity
+npm run mcp                           # optional local MCP inspector at http://127.0.0.1:8787/mcp
+                                      # (dev tool — NOT an Alexa add-on; loopback only)
 ```
 
 The deployed site is a fully static build — no backend, no network calls, no
@@ -58,7 +61,7 @@ packages/engine   Pure deterministic core: facts, diff, consent, ledger, replay,
 apps/sim          Vite + React simulated Alexa+ experience (the demo)
 apps/mcp-server   Optional local-only MCP inspection wrapper (dev tool, NOT an Alexa add-on)
 docs/             Demo script, Devpost draft, friction log, screenshots
-.github/workflows Pages deploy (typecheck + tests gate the artifact)
+.github/workflows Pages deploy (typecheck + lint + all test suites gate the artifact)
 ```
 
 ## Verification
