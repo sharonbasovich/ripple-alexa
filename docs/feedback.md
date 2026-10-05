@@ -61,7 +61,7 @@ entrants validate designs against something real.
 
 ### Vitest (5.0.3)
 
-- **Used for**: all 88 tests — engine unit/integration, a 1,000-sequence
+- **Used for**: all 88 tests — engine unit/integration, a 1,200-sequence
   property suite, sim state tests, and the MCP transport tests.
 - **Worked well**: fast, deterministic, same config pattern in every workspace
   package; the property suite caught two real engine bugs (lazy-expiry ledger
@@ -125,6 +125,22 @@ entrants validate designs against something real.
   bookkeeping. Findings keyed to a SHA would cut that overhead.
 - **Onboarding**: n/a — it's the agent.
 - **Use again?** Yes.
+
+### GitHub Actions
+
+- **Used for**: lint, type checks, tests, build and deployment.
+- **Worked well**: clean-checkout verification.
+- **Needs work**: CI needed the MCP workspace build before its imports were used.
+- **Onboarding**: existing GitHub accounts were reused, so this was not a new-account onboarding test. GitHub Actions and Pages required initial repository deployment setup and a verified first clean run.
+- **Use again?** Yes, for reproducible checks.
+
+### GitHub Pages
+
+- **Used for**: hosting the public simulation.
+- **Worked well**: free, reproducible deployment.
+- **Needs work**: GitHub Pages needed repository setup.
+- **Onboarding**: existing GitHub accounts were reused, so this was not a new-account onboarding test. GitHub Actions and Pages required initial repository deployment setup and a verified first clean run.
+- **Use again?** Yes, for free hosting.
 
 ## Honest summary of remaining limits
 
