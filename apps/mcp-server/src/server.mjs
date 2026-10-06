@@ -1,7 +1,7 @@
-// Local-only MCP inspection wrapper around the SAME engine the UI runs.
-// Dev tool for judges/developers — NOT an Alexa add-on, integration, or
-// claim of one. Loopback only; rejects non-loopback origins/hosts; no
-// outbound calls; world state lives in this process's memory only.
+// Local-only MCP server used by the browser's real Streamable HTTP client.
+// It is not an Alexa add-on or integration. Loopback only; rejects
+// non-loopback origins/hosts; no outbound calls; synthetic world state lives
+// in this process's memory only.
 import * as E from '@ripple/engine/dist/index.js'; // built engine — plain node can't consume TS source
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -20,6 +20,32 @@ export function createRippleMcpServer(w) {
     content: [{ type: 'text', text: s }],
     structuredContent: structured,
   });
+
+  // Expose the complete proposed operation and the exact consent tuple so a
+  // browser can show what will change before it asks the user to approve it.
+  const operationForReview = (cs, op) => {
+    const consent = E.consentFor(w, op);
+    return {
+      id: op.id,
+      kind: op.kind,
+      service: op.service,
+      commitmentId: op.commitmentId,
+      isAlternative: op.isAlternative,
+      label: op.label,
+      before: op.before,
+      after: op.after,
+      patch: op.patch,
+      fee: op.fee,
+      costDelta: op.costDelta,
+      requiresConsent: op.requiresConsent,
+      irreversibleNote: op.irreversibleNote,
+      changedBy: op.changedBy,
+      status: op.status,
+      reason: op.reason,
+      payloadHash: consent.payloadHash,
+      factsVersion: cs.factsVersion,
+    };
+  };
 
   server.registerTool(
     'plan_visit',
@@ -80,12 +106,10 @@ export function createRippleMcpServer(w) {
         {
           ok: true,
           changeSetId: cs.id,
-          ops: cs.ops.map((o) => ({
-            id: o.id, kind: o.kind, commitmentId: o.commitmentId, label: o.label,
-            fee: o.fee, costDelta: o.costDelta, requiresConsent: o.requiresConsent,
-            payloadHash: E.consentFor(w, o).payloadHash,
-            factsVersion: cs.factsVersion,
-          })),
+          factsVersion: cs.factsVersion,
+          trigger: cs.trigger,
+          expiresAt: cs.expiresAt,
+          ops: cs.ops.map((o) => operationForReview(cs, o)),
         },
       );
     },
@@ -171,13 +195,28 @@ export function createRippleMcpServer(w) {
       description: 'Current commitments, lifecycle states, spend, open decisions.',
       inputSchema: {},
     },
-    () => {
-      const s = E.worldSummary(w);
-      return text(
-        `${s.liveCommitments.length} live commitments; $${s.budget.committed} committed, $${s.feesCharged} sunk fees; ${s.openOps} open decisions.`,
-        { ok: true, ...s },
-      );
-    },
+      () => {
+        const s = E.worldSummary(w);
+        const cs = w.changeSets[w.changeSets.length - 1];
+        return text(
+          `${s.liveCommitments.length} live commitments; $${s.budget.committed} committed, $${s.feesCharged} sunk fees; ${s.openOps} open decisions.`,
+          {
+            ok: true,
+            ...s,
+            factsVersion: w.factsVersion,
+            changeSet: cs
+              ? {
+                  id: cs.id,
+                  status: cs.status,
+                  trigger: cs.trigger,
+                  factsVersion: cs.factsVersion,
+                  expiresAt: cs.expiresAt,
+                  ops: cs.ops.map((o) => operationForReview(cs, o)),
+                }
+              : null,
+          },
+        );
+      },
   );
 
   server.registerTool(

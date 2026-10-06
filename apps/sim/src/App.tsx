@@ -20,6 +20,7 @@ import { OpCard } from './components/OpCard';
 import { ReceiptPanel } from './components/ReceiptPanel';
 import { FactPanel } from './components/FactPanel';
 import { PlanBoard } from './components/PlanBoard';
+import { McpDemo } from './McpDemo';
 
 const CHIPS = [
   'Move arrival to Saturday 9:40',
@@ -30,6 +31,31 @@ const CHIPS = [
 ];
 
 export default function App() {
+  const [mode, setMode] = useState<'offline' | 'mcp'>('offline');
+  return (
+    <>
+      <nav className="demo-mode-switch" aria-label="Demo mode">
+        <button
+          aria-pressed={mode === 'offline'}
+          className={mode === 'offline' ? 'selected' : ''}
+          onClick={() => setMode('offline')}
+        >
+          Offline preview
+        </button>
+        <button
+          aria-pressed={mode === 'mcp'}
+          className={mode === 'mcp' ? 'selected' : ''}
+          onClick={() => setMode('mcp')}
+        >
+          Connected MCP demo
+        </button>
+      </nav>
+      {mode === 'mcp' ? <McpDemo /> : <OfflinePreview />}
+    </>
+  );
+}
+
+function OfflinePreview() {
   const [sim, setSim] = useState<SimState>(() => load() ?? seed());
   const [preview, setPreview] = useState<Preview | null>(null);
   const [notice, setNotice] = useState<string>('');
@@ -158,6 +184,7 @@ export default function App() {
     <div className={`app device-${device} ${compact ? 'compact' : ''}`}>
       <header className="hero">
         <div className="sim-banner" role="note">
+          Offline preview - all actions use only the local safety engine; no MCP request is sent.<br />
           Simulated Alexa+ experience · fictional services, prices &amp; policies · nothing real is
           booked · data stays on this device
         </div>

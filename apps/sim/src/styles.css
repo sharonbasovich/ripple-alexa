@@ -269,3 +269,81 @@ input:focus-visible { outline: 3px solid var(--accent-soft); }
 .composer .preset { align-self: flex-start; }
 .composer .chips { margin: 0; }
 .affected-count { margin: 0; font-size: 0.85rem; color: var(--accent-deep); font-weight: 600; }
+
+/* The local engine preview and the real browser-to-MCP path are separate modes. */
+.demo-mode-switch {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 14px 20px 0;
+  display: flex;
+  gap: 8px;
+}
+.demo-mode-switch button { color: var(--ink-dim); }
+.demo-mode-switch button.selected { background: var(--ink); color: #fffdf9; border-color: var(--ink); }
+.mcp-main { display: grid; gap: 16px; }
+.mcp-connection, .mcp-tools-panel, .mcp-state-panel, .mcp-proposal-panel, .mcp-evidence {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.mcp-connection { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: center; }
+.mcp-connection h2, .mcp-tools-panel h2, .mcp-state-panel h2, .mcp-proposal-panel h2, .mcp-evidence h2 { margin: 0; font-size: 1.18rem; }
+.mcp-connection-copy p { margin: 6px 0 0; max-width: 72ch; color: var(--ink-dim); }
+.mcp-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.mcp-hint, .mcp-message, .mcp-error, .mcp-proof { margin: 10px 0 0; padding: 9px 12px; border-radius: 8px; font-size: 0.88rem; }
+.mcp-hint { color: var(--warn); background: #f6eddd; }
+.mcp-message { color: var(--ok); background: #e9f2e7; }
+.mcp-error { color: var(--danger); background: #fbefed; }
+.mcp-proof { color: var(--ok); background: #e9f2e7; }
+.mcp-connection > .mcp-error, .mcp-connection > .mcp-message { grid-column: 1 / -1; }
+.connection-badge { align-self: flex-end; padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-dim); font-size: 0.82rem; }
+.connection-badge.is-connected { color: var(--ok); border-color: #a9c7ae; background: #edf5ed; }
+.connection-badge.is-error { color: var(--danger); border-color: #d9aaa5; background: #fbefed; }
+.mcp-tool-list { display: flex; flex-wrap: wrap; list-style: none; gap: 7px; padding: 0; margin: 12px 0 0; }
+.mcp-tool-list li { border: 1px solid var(--line); background: #f8f4ed; border-radius: 6px; padding: 4px 8px; font-size: 0.85rem; }
+.mcp-state-head, .mcp-proposal-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.mcp-state-head p { margin: 4px 0 0; }
+.mcp-budget-ok, .mcp-budget-over { font-size: 1.1rem; white-space: nowrap; }
+.mcp-budget-ok { color: var(--ok); }
+.mcp-budget-over { color: var(--danger); }
+.mcp-facts { margin: 12px 0 0; font-size: 0.9rem; color: var(--ink-dim); }
+.mcp-commitments { margin-top: 12px; }
+.mcp-commitments summary, .mcp-consent-context summary, .mcp-trace summary { cursor: pointer; }
+.mcp-commitments ul { padding-left: 18px; display: grid; gap: 8px; }
+.mcp-commitments pre, .mcp-op pre, .mcp-trace pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.mcp-commitments pre { margin: 5px 0; padding: 9px; background: #f8f4ed; border-radius: 7px; }
+.mcp-change-meta { margin: 14px 0; padding: 8px 10px; border-left: 3px solid var(--accent); background: #faf3ea; font-size: 0.86rem; }
+.mcp-op-list { display: grid; gap: 12px; margin-top: 14px; }
+.mcp-op { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; padding: 14px 16px; background: #fffefb; }
+.mcp-op header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.mcp-op h3 { margin: 3px 0 0; font-size: 1rem; }
+.mcp-op-kind { color: var(--ink-dim); font-size: 0.78rem; }
+.mcp-op-id, .mcp-costs { margin: 9px 0 0; font-size: 0.86rem; }
+.mcp-param-grid, .mcp-json-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.mcp-param-grid h4, .mcp-json-pair h4 { margin: 0 0 5px; font-size: 0.84rem; color: var(--ink-dim); }
+.mcp-param-grid pre, .mcp-json-pair pre { max-height: 280px; overflow: auto; margin: 0; padding: 10px; border-radius: 7px; background: #f8f4ed; font-size: 0.78rem; }
+.mcp-costs { font-weight: 600; }
+.mcp-consent-context { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 9px; }
+.mcp-consent-context dl { display: grid; gap: 6px; margin: 8px 0 0; }
+.mcp-consent-context dl div { display: grid; grid-template-columns: 125px minmax(0, 1fr); gap: 8px; }
+.mcp-consent-context dt { color: var(--ink-dim); font-size: 0.84rem; }
+.mcp-consent-context dd { margin: 0; overflow-wrap: anywhere; font-size: 0.8rem; }
+.mcp-execute { margin-top: 14px; }
+.mcp-evidence > .mcp-state-head > span { color: var(--ink-dim); font-size: 0.85rem; }
+.mcp-evidence-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.mcp-evidence-actions span { color: var(--ink-dim); font-size: 0.85rem; }
+.mcp-trace { padding-left: 22px; margin: 14px 0 0; display: grid; gap: 8px; }
+.mcp-trace > li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; }
+.mcp-trace summary { font-size: 0.88rem; }
+.mcp-json-pair { margin-bottom: 8px; }
+@media (max-width: 640px) {
+  .demo-mode-switch { padding: 10px 12px 0; }
+  .demo-mode-switch button { flex: 1; padding: 8px; }
+  .mcp-connection { grid-template-columns: 1fr; }
+  .mcp-actions { justify-content: flex-start; }
+  .connection-badge { justify-self: flex-start; }
+  .mcp-state-head, .mcp-proposal-head { align-items: flex-start; flex-direction: column; }
+  .mcp-param-grid, .mcp-json-pair { grid-template-columns: 1fr; }
+  .mcp-connection, .mcp-tools-panel, .mcp-state-panel, .mcp-proposal-panel, .mcp-evidence { padding: 15px; }
+}

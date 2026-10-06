@@ -1,0 +1,2131 @@
+{
+  "name": "Ripple browser MCP evidence",
+  "testedCommit": "d7b11606155bbed402d3ba4225e17de864cdcc18",
+  "capturedAt": "2026-10-06T23:05:56.002Z",
+  "endpoint": "http://127.0.0.1:5173/mcp",
+  "transport": "Streamable HTTP",
+  "exchanges": [
+    {
+      "method": "initialize",
+      "request": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-11-25",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "ripple-browser-demo",
+            "version": "0.1.0"
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 0
+      },
+      "response": {
+        "result": {
+          "protocolVersion": "2025-11-25",
+          "capabilities": {
+            "tools": {
+              "listChanged": true
+            }
+          },
+          "serverInfo": {
+            "name": "ripple-sim-inspection",
+            "version": "0.1.0"
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 0
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "notifications/initialized",
+      "request": {
+        "method": "notifications/initialized",
+        "jsonrpc": "2.0"
+      },
+      "response": "",
+      "httpStatus": 202
+    },
+    {
+      "method": "tools/list",
+      "request": {
+        "method": "tools/list",
+        "jsonrpc": "2.0",
+        "id": 1
+      },
+      "response": {
+        "result": {
+          "tools": [
+            {
+              "name": "plan_visit",
+              "title": "Plan the visit",
+              "description": "Seed a fresh simulated plan from visit facts (replaces current world in this process).",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "arrival": {
+                    "type": "string",
+                    "description": "ISO local, e.g. 2026-10-16T18:05"
+                  },
+                  "departure": {
+                    "type": "string"
+                  },
+                  "guests": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  },
+                  "budget": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "arrival",
+                  "departure",
+                  "guests",
+                  "budget"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "apply_change",
+              "title": "Change visit facts",
+              "description": "Apply fact edits; returns the proposed change set. Nothing executes without confirm_ops on exact op ids.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "edits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "enum": [
+                            "arrival",
+                            "departure",
+                            "guests",
+                            "budget"
+                          ]
+                        },
+                        "value": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "edits"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "confirm_ops",
+              "title": "Approve operations",
+              "description": "Decide proposed ops by exact id. Optionally pass the payloadHash/factsVersion returned by apply_change to bind consent to the reviewed payload — a mismatch is rejected honestly. Stale/expired consent is rejected either way.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "opIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "ops": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "payloadHash": {
+                          "type": "string"
+                        },
+                        "factsVersion": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "decline_ops",
+              "title": "Decline operations",
+              "description": "Decide proposed ops by exact id. Optionally pass the payloadHash/factsVersion returned by apply_change to bind consent to the reviewed payload — a mismatch is rejected honestly. Stale/expired consent is rejected either way.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "opIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "ops": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "payloadHash": {
+                          "type": "string"
+                        },
+                        "factsVersion": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "get_receipt",
+              "title": "Causal receipt for a fact",
+              "description": "Ops and ledger events actually caused by a fact change (provenance-stamped).",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "fact": {
+                    "type": "string",
+                    "enum": [
+                      "arrival",
+                      "departure",
+                      "guests",
+                      "budget"
+                    ]
+                  }
+                },
+                "required": [
+                  "fact"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "get_status",
+              "title": "Plan status",
+              "description": "Current commitments, lifecycle states, spend, open decisions.",
+              "inputSchema": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {}
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "execute_approved",
+              "title": "Execute approved ops",
+              "description": "Execute every approved op in the open change set. Truthful outcomes: applied / rejected / requoted.",
+              "inputSchema": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {}
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            }
+          ]
+        },
+        "jsonrpc": "2.0",
+        "id": 1
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "get_status",
+          "arguments": {}
+        },
+        "jsonrpc": "2.0",
+        "id": 2
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "7 live commitments; $196 committed, $0 sunk fees; 0 open decisions."
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "facts": {
+              "arrival": "2026-10-16T18:05",
+              "departure": "2026-10-18T17:00",
+              "guests": 2,
+              "budget": 300
+            },
+            "liveCommitments": [
+              {
+                "id": "calendar:visit",
+                "state": "confirmed",
+                "params": {
+                  "start": "2026-10-16T18:05",
+                  "end": "2026-10-18T17:00",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "grocery:arrival-delivery",
+                "state": "dispatched",
+                "params": {
+                  "windowStart": "2026-10-16T17:05",
+                  "windowEnd": "2026-10-16T19:05",
+                  "items": 14,
+                  "guests": 2
+                },
+                "cost": 76
+              },
+              {
+                "id": "restaurant:arrival-dinner",
+                "state": "confirmed",
+                "params": {
+                  "time": "2026-10-16T19:35",
+                  "partySize": 3
+                },
+                "cost": 120
+              },
+              {
+                "id": "routines:welcome",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-16T17:35",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:coffee",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-17T07:55",
+                  "cups": 3
+                },
+                "cost": 0
+              },
+              {
+                "id": "pickup:airport",
+                "state": "confirmed",
+                "params": {
+                  "remindAt": "2026-10-16T16:55",
+                  "arrival": "2026-10-16T18:05"
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:farewell",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-18T16:00"
+                },
+                "cost": 0
+              }
+            ],
+            "feesCharged": 0,
+            "openOps": 0,
+            "budget": {
+              "budget": 300,
+              "committed": 196,
+              "fees": 0,
+              "pendingAdds": 0,
+              "projected": 196,
+              "feasible": true,
+              "overBy": 0
+            },
+            "factsVersion": 1,
+            "changeSet": null
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 2
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "apply_change",
+          "arguments": {
+            "edits": [
+              {
+                "key": "arrival",
+                "value": "2026-10-17T09:40"
+              },
+              {
+                "key": "guests",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 3
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "Proposed 7 operations (change set 91ceb705); nothing executed."
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "changeSetId": "91ceb705",
+            "factsVersion": 2,
+            "trigger": "arrival Friday 18:05 → Saturday 09:40; guest count 2 → 3",
+            "expiresAt": 1792195200000,
+            "ops": [
+              {
+                "id": "10224731",
+                "kind": "update",
+                "service": "calendar",
+                "commitmentId": "calendar:visit",
+                "isAlternative": false,
+                "label": "Update Family visit",
+                "before": {
+                  "start": "2026-10-16T18:05",
+                  "end": "2026-10-18T17:00",
+                  "guests": 2
+                },
+                "after": {
+                  "start": "2026-10-17T09:40",
+                  "end": "2026-10-18T17:00",
+                  "guests": 3
+                },
+                "patch": {
+                  "start": "2026-10-17T09:40",
+                  "guests": 3
+                },
+                "fee": 0,
+                "costDelta": 0,
+                "requiresConsent": false,
+                "changedBy": [
+                  "arrival",
+                  "guests"
+                ],
+                "status": "proposed",
+                "payloadHash": "aaefef00",
+                "factsVersion": 2
+              },
+              {
+                "id": "114abdab",
+                "kind": "update",
+                "service": "grocery",
+                "commitmentId": "grocery:arrival-delivery",
+                "isAlternative": false,
+                "label": "Update Arrival-day grocery delivery",
+                "before": {
+                  "windowStart": "2026-10-16T17:05",
+                  "windowEnd": "2026-10-16T19:05",
+                  "items": 14,
+                  "guests": 2
+                },
+                "after": {
+                  "windowStart": "2026-10-17T08:40",
+                  "windowEnd": "2026-10-17T10:40",
+                  "items": 18,
+                  "guests": 3
+                },
+                "patch": {
+                  "windowStart": "2026-10-17T08:40",
+                  "windowEnd": "2026-10-17T10:40",
+                  "items": 18,
+                  "guests": 3
+                },
+                "fee": 0,
+                "costDelta": 18,
+                "requiresConsent": false,
+                "changedBy": [
+                  "arrival",
+                  "guests"
+                ],
+                "status": "proposed",
+                "payloadHash": "0c829975",
+                "factsVersion": 2
+              },
+              {
+                "id": "0f606a50",
+                "kind": "cancel",
+                "service": "restaurant",
+                "commitmentId": "restaurant:arrival-dinner",
+                "isAlternative": false,
+                "label": "Cancel Arrival-day dinner reservation (rebook on the new day)",
+                "before": {
+                  "time": "2026-10-16T19:35",
+                  "partySize": 3
+                },
+                "after": null,
+                "patch": {},
+                "fee": 75,
+                "costDelta": -120,
+                "requiresConsent": true,
+                "irreversibleNote": "Cancellation is final with this restaurant.",
+                "changedBy": [
+                  "arrival",
+                  "guests"
+                ],
+                "status": "proposed",
+                "payloadHash": "942c42ac",
+                "factsVersion": 2
+              },
+              {
+                "id": "b1e133df",
+                "kind": "create",
+                "service": "restaurant",
+                "commitmentId": "restaurant:arrival-dinner",
+                "isAlternative": false,
+                "label": "Book Arrival-day dinner reservation",
+                "before": null,
+                "after": {
+                  "time": "2026-10-17T11:10",
+                  "partySize": 4
+                },
+                "patch": {},
+                "fee": 0,
+                "costDelta": 160,
+                "requiresConsent": false,
+                "changedBy": [
+                  "arrival",
+                  "guests"
+                ],
+                "status": "proposed",
+                "payloadHash": "a63b37c2",
+                "factsVersion": 2
+              },
+              {
+                "id": "f6b846db",
+                "kind": "update",
+                "service": "routines",
+                "commitmentId": "routines:welcome",
+                "isAlternative": false,
+                "label": "Update Guest welcome routine",
+                "before": {
+                  "runAt": "2026-10-16T17:35",
+                  "guests": 2
+                },
+                "after": {
+                  "runAt": "2026-10-17T09:10",
+                  "guests": 3
+                },
+                "patch": {
+                  "runAt": "2026-10-17T09:10",
+                  "guests": 3
+                },
+                "fee": 0,
+                "costDelta": 0,
+                "requiresConsent": false,
+                "changedBy": [
+                  "arrival",
+                  "guests"
+                ],
+                "status": "proposed",
+                "payloadHash": "0c8b631c",
+                "factsVersion": 2
+              },
+              {
+                "id": "8e6831e0",
+                "kind": "update",
+                "service": "routines",
+                "commitmentId": "routines:coffee",
+                "isAlternative": false,
+                "label": "Update Morning coffee routine",
+                "before": {
+                  "runAt": "2026-10-17T07:55",
+                  "cups": 3
+                },
+                "after": {
+                  "runAt": "2026-10-18T07:55",
+                  "cups": 4
+                },
+                "patch": {
+                  "runAt": "2026-10-18T07:55",
+                  "cups": 4
+                },
+                "fee": 0,
+                "costDelta": 0,
+                "requiresConsent": false,
+                "changedBy": [
+                  "arrival",
+                  "guests"
+                ],
+                "status": "proposed",
+                "payloadHash": "c780574f",
+                "factsVersion": 2
+              },
+              {
+                "id": "19a188ad",
+                "kind": "update",
+                "service": "pickup",
+                "commitmentId": "pickup:airport",
+                "isAlternative": false,
+                "label": "Update Airport pickup reminder",
+                "before": {
+                  "remindAt": "2026-10-16T16:55",
+                  "arrival": "2026-10-16T18:05"
+                },
+                "after": {
+                  "remindAt": "2026-10-17T08:30",
+                  "arrival": "2026-10-17T09:40"
+                },
+                "patch": {
+                  "remindAt": "2026-10-17T08:30",
+                  "arrival": "2026-10-17T09:40"
+                },
+                "fee": 0,
+                "costDelta": 0,
+                "requiresConsent": false,
+                "changedBy": [
+                  "arrival"
+                ],
+                "status": "proposed",
+                "payloadHash": "ff22c07b",
+                "factsVersion": 2
+              }
+            ]
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 3
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "get_status",
+          "arguments": {}
+        },
+        "jsonrpc": "2.0",
+        "id": 4
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "7 live commitments; $196 committed, $0 sunk fees; 7 open decisions."
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "facts": {
+              "arrival": "2026-10-17T09:40",
+              "departure": "2026-10-18T17:00",
+              "guests": 3,
+              "budget": 300
+            },
+            "liveCommitments": [
+              {
+                "id": "calendar:visit",
+                "state": "confirmed",
+                "params": {
+                  "start": "2026-10-16T18:05",
+                  "end": "2026-10-18T17:00",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "grocery:arrival-delivery",
+                "state": "dispatched",
+                "params": {
+                  "windowStart": "2026-10-16T17:05",
+                  "windowEnd": "2026-10-16T19:05",
+                  "items": 14,
+                  "guests": 2
+                },
+                "cost": 76
+              },
+              {
+                "id": "restaurant:arrival-dinner",
+                "state": "confirmed",
+                "params": {
+                  "time": "2026-10-16T19:35",
+                  "partySize": 3
+                },
+                "cost": 120
+              },
+              {
+                "id": "routines:welcome",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-16T17:35",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:coffee",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-17T07:55",
+                  "cups": 3
+                },
+                "cost": 0
+              },
+              {
+                "id": "pickup:airport",
+                "state": "confirmed",
+                "params": {
+                  "remindAt": "2026-10-16T16:55",
+                  "arrival": "2026-10-16T18:05"
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:farewell",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-18T16:00"
+                },
+                "cost": 0
+              }
+            ],
+            "feesCharged": 0,
+            "openOps": 7,
+            "budget": {
+              "budget": 300,
+              "committed": 196,
+              "fees": 0,
+              "pendingAdds": 253,
+              "projected": 449,
+              "feasible": false,
+              "overBy": 149
+            },
+            "factsVersion": 2,
+            "changeSet": {
+              "id": "91ceb705",
+              "status": "open",
+              "trigger": "arrival Friday 18:05 → Saturday 09:40; guest count 2 → 3",
+              "factsVersion": 2,
+              "expiresAt": 1792195200000,
+              "ops": [
+                {
+                  "id": "10224731",
+                  "kind": "update",
+                  "service": "calendar",
+                  "commitmentId": "calendar:visit",
+                  "isAlternative": false,
+                  "label": "Update Family visit",
+                  "before": {
+                    "start": "2026-10-16T18:05",
+                    "end": "2026-10-18T17:00",
+                    "guests": 2
+                  },
+                  "after": {
+                    "start": "2026-10-17T09:40",
+                    "end": "2026-10-18T17:00",
+                    "guests": 3
+                  },
+                  "patch": {
+                    "start": "2026-10-17T09:40",
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "aaefef00",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "114abdab",
+                  "kind": "update",
+                  "service": "grocery",
+                  "commitmentId": "grocery:arrival-delivery",
+                  "isAlternative": false,
+                  "label": "Update Arrival-day grocery delivery",
+                  "before": {
+                    "windowStart": "2026-10-16T17:05",
+                    "windowEnd": "2026-10-16T19:05",
+                    "items": 14,
+                    "guests": 2
+                  },
+                  "after": {
+                    "windowStart": "2026-10-17T08:40",
+                    "windowEnd": "2026-10-17T10:40",
+                    "items": 18,
+                    "guests": 3
+                  },
+                  "patch": {
+                    "windowStart": "2026-10-17T08:40",
+                    "windowEnd": "2026-10-17T10:40",
+                    "items": 18,
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 18,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "0c829975",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "0f606a50",
+                  "kind": "cancel",
+                  "service": "restaurant",
+                  "commitmentId": "restaurant:arrival-dinner",
+                  "isAlternative": false,
+                  "label": "Cancel Arrival-day dinner reservation (rebook on the new day)",
+                  "before": {
+                    "time": "2026-10-16T19:35",
+                    "partySize": 3
+                  },
+                  "after": null,
+                  "patch": {},
+                  "fee": 75,
+                  "costDelta": -120,
+                  "requiresConsent": true,
+                  "irreversibleNote": "Cancellation is final with this restaurant.",
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "942c42ac",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "b1e133df",
+                  "kind": "create",
+                  "service": "restaurant",
+                  "commitmentId": "restaurant:arrival-dinner",
+                  "isAlternative": false,
+                  "label": "Book Arrival-day dinner reservation",
+                  "before": null,
+                  "after": {
+                    "time": "2026-10-17T11:10",
+                    "partySize": 4
+                  },
+                  "patch": {},
+                  "fee": 0,
+                  "costDelta": 160,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "a63b37c2",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "f6b846db",
+                  "kind": "update",
+                  "service": "routines",
+                  "commitmentId": "routines:welcome",
+                  "isAlternative": false,
+                  "label": "Update Guest welcome routine",
+                  "before": {
+                    "runAt": "2026-10-16T17:35",
+                    "guests": 2
+                  },
+                  "after": {
+                    "runAt": "2026-10-17T09:10",
+                    "guests": 3
+                  },
+                  "patch": {
+                    "runAt": "2026-10-17T09:10",
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "0c8b631c",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "8e6831e0",
+                  "kind": "update",
+                  "service": "routines",
+                  "commitmentId": "routines:coffee",
+                  "isAlternative": false,
+                  "label": "Update Morning coffee routine",
+                  "before": {
+                    "runAt": "2026-10-17T07:55",
+                    "cups": 3
+                  },
+                  "after": {
+                    "runAt": "2026-10-18T07:55",
+                    "cups": 4
+                  },
+                  "patch": {
+                    "runAt": "2026-10-18T07:55",
+                    "cups": 4
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "c780574f",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "19a188ad",
+                  "kind": "update",
+                  "service": "pickup",
+                  "commitmentId": "pickup:airport",
+                  "isAlternative": false,
+                  "label": "Update Airport pickup reminder",
+                  "before": {
+                    "remindAt": "2026-10-16T16:55",
+                    "arrival": "2026-10-16T18:05"
+                  },
+                  "after": {
+                    "remindAt": "2026-10-17T08:30",
+                    "arrival": "2026-10-17T09:40"
+                  },
+                  "patch": {
+                    "remindAt": "2026-10-17T08:30",
+                    "arrival": "2026-10-17T09:40"
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "ff22c07b",
+                  "factsVersion": 2
+                }
+              ]
+            }
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 4
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "confirm_ops",
+          "arguments": {
+            "ops": [
+              {
+                "id": "0f606a50",
+                "payloadHash": "942c42ac",
+                "factsVersion": 2
+              }
+            ]
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 5
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "1/1 approved."
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "results": [
+              {
+                "opId": "0f606a50",
+                "ok": true,
+                "reason": "approve"
+              }
+            ]
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 5
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "get_status",
+          "arguments": {}
+        },
+        "jsonrpc": "2.0",
+        "id": 6
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "7 live commitments; $196 committed, $0 sunk fees; 6 open decisions."
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "facts": {
+              "arrival": "2026-10-17T09:40",
+              "departure": "2026-10-18T17:00",
+              "guests": 3,
+              "budget": 300
+            },
+            "liveCommitments": [
+              {
+                "id": "calendar:visit",
+                "state": "confirmed",
+                "params": {
+                  "start": "2026-10-16T18:05",
+                  "end": "2026-10-18T17:00",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "grocery:arrival-delivery",
+                "state": "dispatched",
+                "params": {
+                  "windowStart": "2026-10-16T17:05",
+                  "windowEnd": "2026-10-16T19:05",
+                  "items": 14,
+                  "guests": 2
+                },
+                "cost": 76
+              },
+              {
+                "id": "restaurant:arrival-dinner",
+                "state": "confirmed",
+                "params": {
+                  "time": "2026-10-16T19:35",
+                  "partySize": 3
+                },
+                "cost": 120
+              },
+              {
+                "id": "routines:welcome",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-16T17:35",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:coffee",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-17T07:55",
+                  "cups": 3
+                },
+                "cost": 0
+              },
+              {
+                "id": "pickup:airport",
+                "state": "confirmed",
+                "params": {
+                  "remindAt": "2026-10-16T16:55",
+                  "arrival": "2026-10-16T18:05"
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:farewell",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-18T16:00"
+                },
+                "cost": 0
+              }
+            ],
+            "feesCharged": 0,
+            "openOps": 6,
+            "budget": {
+              "budget": 300,
+              "committed": 196,
+              "fees": 0,
+              "pendingAdds": 253,
+              "projected": 449,
+              "feasible": false,
+              "overBy": 149
+            },
+            "factsVersion": 2,
+            "changeSet": {
+              "id": "91ceb705",
+              "status": "open",
+              "trigger": "arrival Friday 18:05 → Saturday 09:40; guest count 2 → 3",
+              "factsVersion": 2,
+              "expiresAt": 1792195200000,
+              "ops": [
+                {
+                  "id": "10224731",
+                  "kind": "update",
+                  "service": "calendar",
+                  "commitmentId": "calendar:visit",
+                  "isAlternative": false,
+                  "label": "Update Family visit",
+                  "before": {
+                    "start": "2026-10-16T18:05",
+                    "end": "2026-10-18T17:00",
+                    "guests": 2
+                  },
+                  "after": {
+                    "start": "2026-10-17T09:40",
+                    "end": "2026-10-18T17:00",
+                    "guests": 3
+                  },
+                  "patch": {
+                    "start": "2026-10-17T09:40",
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "aaefef00",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "114abdab",
+                  "kind": "update",
+                  "service": "grocery",
+                  "commitmentId": "grocery:arrival-delivery",
+                  "isAlternative": false,
+                  "label": "Update Arrival-day grocery delivery",
+                  "before": {
+                    "windowStart": "2026-10-16T17:05",
+                    "windowEnd": "2026-10-16T19:05",
+                    "items": 14,
+                    "guests": 2
+                  },
+                  "after": {
+                    "windowStart": "2026-10-17T08:40",
+                    "windowEnd": "2026-10-17T10:40",
+                    "items": 18,
+                    "guests": 3
+                  },
+                  "patch": {
+                    "windowStart": "2026-10-17T08:40",
+                    "windowEnd": "2026-10-17T10:40",
+                    "items": 18,
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 18,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "0c829975",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "0f606a50",
+                  "kind": "cancel",
+                  "service": "restaurant",
+                  "commitmentId": "restaurant:arrival-dinner",
+                  "isAlternative": false,
+                  "label": "Cancel Arrival-day dinner reservation (rebook on the new day)",
+                  "before": {
+                    "time": "2026-10-16T19:35",
+                    "partySize": 3
+                  },
+                  "after": null,
+                  "patch": {},
+                  "fee": 75,
+                  "costDelta": -120,
+                  "requiresConsent": true,
+                  "irreversibleNote": "Cancellation is final with this restaurant.",
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "approved",
+                  "payloadHash": "942c42ac",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "b1e133df",
+                  "kind": "create",
+                  "service": "restaurant",
+                  "commitmentId": "restaurant:arrival-dinner",
+                  "isAlternative": false,
+                  "label": "Book Arrival-day dinner reservation",
+                  "before": null,
+                  "after": {
+                    "time": "2026-10-17T11:10",
+                    "partySize": 4
+                  },
+                  "patch": {},
+                  "fee": 0,
+                  "costDelta": 160,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "a63b37c2",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "f6b846db",
+                  "kind": "update",
+                  "service": "routines",
+                  "commitmentId": "routines:welcome",
+                  "isAlternative": false,
+                  "label": "Update Guest welcome routine",
+                  "before": {
+                    "runAt": "2026-10-16T17:35",
+                    "guests": 2
+                  },
+                  "after": {
+                    "runAt": "2026-10-17T09:10",
+                    "guests": 3
+                  },
+                  "patch": {
+                    "runAt": "2026-10-17T09:10",
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "0c8b631c",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "8e6831e0",
+                  "kind": "update",
+                  "service": "routines",
+                  "commitmentId": "routines:coffee",
+                  "isAlternative": false,
+                  "label": "Update Morning coffee routine",
+                  "before": {
+                    "runAt": "2026-10-17T07:55",
+                    "cups": 3
+                  },
+                  "after": {
+                    "runAt": "2026-10-18T07:55",
+                    "cups": 4
+                  },
+                  "patch": {
+                    "runAt": "2026-10-18T07:55",
+                    "cups": 4
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "c780574f",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "19a188ad",
+                  "kind": "update",
+                  "service": "pickup",
+                  "commitmentId": "pickup:airport",
+                  "isAlternative": false,
+                  "label": "Update Airport pickup reminder",
+                  "before": {
+                    "remindAt": "2026-10-16T16:55",
+                    "arrival": "2026-10-16T18:05"
+                  },
+                  "after": {
+                    "remindAt": "2026-10-17T08:30",
+                    "arrival": "2026-10-17T09:40"
+                  },
+                  "patch": {
+                    "remindAt": "2026-10-17T08:30",
+                    "arrival": "2026-10-17T09:40"
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "ff22c07b",
+                  "factsVersion": 2
+                }
+              ]
+            }
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 6
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "execute_approved",
+          "arguments": {}
+        },
+        "jsonrpc": "2.0",
+        "id": 7
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "1 outcome(s)."
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "outcomes": [
+              {
+                "opId": "0f606a50",
+                "status": "executed",
+                "feeCharged": 75
+              }
+            ]
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 7
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "get_status",
+          "arguments": {}
+        },
+        "jsonrpc": "2.0",
+        "id": 8
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "6 live commitments; $76 committed, $75 sunk fees; 6 open decisions."
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "facts": {
+              "arrival": "2026-10-17T09:40",
+              "departure": "2026-10-18T17:00",
+              "guests": 3,
+              "budget": 300
+            },
+            "liveCommitments": [
+              {
+                "id": "calendar:visit",
+                "state": "confirmed",
+                "params": {
+                  "start": "2026-10-16T18:05",
+                  "end": "2026-10-18T17:00",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "grocery:arrival-delivery",
+                "state": "dispatched",
+                "params": {
+                  "windowStart": "2026-10-16T17:05",
+                  "windowEnd": "2026-10-16T19:05",
+                  "items": 14,
+                  "guests": 2
+                },
+                "cost": 76
+              },
+              {
+                "id": "routines:welcome",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-16T17:35",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:coffee",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-17T07:55",
+                  "cups": 3
+                },
+                "cost": 0
+              },
+              {
+                "id": "pickup:airport",
+                "state": "confirmed",
+                "params": {
+                  "remindAt": "2026-10-16T16:55",
+                  "arrival": "2026-10-16T18:05"
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:farewell",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-18T16:00"
+                },
+                "cost": 0
+              }
+            ],
+            "feesCharged": 75,
+            "openOps": 6,
+            "budget": {
+              "budget": 300,
+              "committed": 76,
+              "fees": 75,
+              "pendingAdds": 178,
+              "projected": 329,
+              "feasible": false,
+              "overBy": 29
+            },
+            "factsVersion": 2,
+            "changeSet": {
+              "id": "91ceb705",
+              "status": "open",
+              "trigger": "arrival Friday 18:05 → Saturday 09:40; guest count 2 → 3",
+              "factsVersion": 2,
+              "expiresAt": 1792195200000,
+              "ops": [
+                {
+                  "id": "10224731",
+                  "kind": "update",
+                  "service": "calendar",
+                  "commitmentId": "calendar:visit",
+                  "isAlternative": false,
+                  "label": "Update Family visit",
+                  "before": {
+                    "start": "2026-10-16T18:05",
+                    "end": "2026-10-18T17:00",
+                    "guests": 2
+                  },
+                  "after": {
+                    "start": "2026-10-17T09:40",
+                    "end": "2026-10-18T17:00",
+                    "guests": 3
+                  },
+                  "patch": {
+                    "start": "2026-10-17T09:40",
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "aaefef00",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "114abdab",
+                  "kind": "update",
+                  "service": "grocery",
+                  "commitmentId": "grocery:arrival-delivery",
+                  "isAlternative": false,
+                  "label": "Update Arrival-day grocery delivery",
+                  "before": {
+                    "windowStart": "2026-10-16T17:05",
+                    "windowEnd": "2026-10-16T19:05",
+                    "items": 14,
+                    "guests": 2
+                  },
+                  "after": {
+                    "windowStart": "2026-10-17T08:40",
+                    "windowEnd": "2026-10-17T10:40",
+                    "items": 18,
+                    "guests": 3
+                  },
+                  "patch": {
+                    "windowStart": "2026-10-17T08:40",
+                    "windowEnd": "2026-10-17T10:40",
+                    "items": 18,
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 18,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "0c829975",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "0f606a50",
+                  "kind": "cancel",
+                  "service": "restaurant",
+                  "commitmentId": "restaurant:arrival-dinner",
+                  "isAlternative": false,
+                  "label": "Cancel Arrival-day dinner reservation (rebook on the new day)",
+                  "before": {
+                    "time": "2026-10-16T19:35",
+                    "partySize": 3
+                  },
+                  "after": null,
+                  "patch": {},
+                  "fee": 75,
+                  "costDelta": -120,
+                  "requiresConsent": true,
+                  "irreversibleNote": "Cancellation is final with this restaurant.",
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "executed",
+                  "payloadHash": "942c42ac",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "b1e133df",
+                  "kind": "create",
+                  "service": "restaurant",
+                  "commitmentId": "restaurant:arrival-dinner",
+                  "isAlternative": false,
+                  "label": "Book Arrival-day dinner reservation",
+                  "before": null,
+                  "after": {
+                    "time": "2026-10-17T11:10",
+                    "partySize": 4
+                  },
+                  "patch": {},
+                  "fee": 0,
+                  "costDelta": 160,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "a63b37c2",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "f6b846db",
+                  "kind": "update",
+                  "service": "routines",
+                  "commitmentId": "routines:welcome",
+                  "isAlternative": false,
+                  "label": "Update Guest welcome routine",
+                  "before": {
+                    "runAt": "2026-10-16T17:35",
+                    "guests": 2
+                  },
+                  "after": {
+                    "runAt": "2026-10-17T09:10",
+                    "guests": 3
+                  },
+                  "patch": {
+                    "runAt": "2026-10-17T09:10",
+                    "guests": 3
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "0c8b631c",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "8e6831e0",
+                  "kind": "update",
+                  "service": "routines",
+                  "commitmentId": "routines:coffee",
+                  "isAlternative": false,
+                  "label": "Update Morning coffee routine",
+                  "before": {
+                    "runAt": "2026-10-17T07:55",
+                    "cups": 3
+                  },
+                  "after": {
+                    "runAt": "2026-10-18T07:55",
+                    "cups": 4
+                  },
+                  "patch": {
+                    "runAt": "2026-10-18T07:55",
+                    "cups": 4
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival",
+                    "guests"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "c780574f",
+                  "factsVersion": 2
+                },
+                {
+                  "id": "19a188ad",
+                  "kind": "update",
+                  "service": "pickup",
+                  "commitmentId": "pickup:airport",
+                  "isAlternative": false,
+                  "label": "Update Airport pickup reminder",
+                  "before": {
+                    "remindAt": "2026-10-16T16:55",
+                    "arrival": "2026-10-16T18:05"
+                  },
+                  "after": {
+                    "remindAt": "2026-10-17T08:30",
+                    "arrival": "2026-10-17T09:40"
+                  },
+                  "patch": {
+                    "remindAt": "2026-10-17T08:30",
+                    "arrival": "2026-10-17T09:40"
+                  },
+                  "fee": 0,
+                  "costDelta": 0,
+                  "requiresConsent": false,
+                  "changedBy": [
+                    "arrival"
+                  ],
+                  "status": "proposed",
+                  "payloadHash": "ff22c07b",
+                  "factsVersion": 2
+                }
+              ]
+            }
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 8
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "confirm_ops",
+          "arguments": {
+            "ops": [
+              {
+                "id": "10224731",
+                "payloadHash": "aaefef00",
+                "factsVersion": 2
+              }
+            ]
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 9
+      },
+      "response": "",
+      "httpStatus": 500
+    },
+    {
+      "method": "initialize",
+      "request": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-11-25",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "ripple-browser-demo",
+            "version": "0.1.0"
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 0
+      },
+      "response": {
+        "result": {
+          "protocolVersion": "2025-11-25",
+          "capabilities": {
+            "tools": {
+              "listChanged": true
+            }
+          },
+          "serverInfo": {
+            "name": "ripple-sim-inspection",
+            "version": "0.1.0"
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 0
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "notifications/initialized",
+      "request": {
+        "method": "notifications/initialized",
+        "jsonrpc": "2.0"
+      },
+      "response": "",
+      "httpStatus": 202
+    },
+    {
+      "method": "tools/list",
+      "request": {
+        "method": "tools/list",
+        "jsonrpc": "2.0",
+        "id": 1
+      },
+      "response": {
+        "result": {
+          "tools": [
+            {
+              "name": "plan_visit",
+              "title": "Plan the visit",
+              "description": "Seed a fresh simulated plan from visit facts (replaces current world in this process).",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "arrival": {
+                    "type": "string",
+                    "description": "ISO local, e.g. 2026-10-16T18:05"
+                  },
+                  "departure": {
+                    "type": "string"
+                  },
+                  "guests": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  },
+                  "budget": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "arrival",
+                  "departure",
+                  "guests",
+                  "budget"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "apply_change",
+              "title": "Change visit facts",
+              "description": "Apply fact edits; returns the proposed change set. Nothing executes without confirm_ops on exact op ids.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "edits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "enum": [
+                            "arrival",
+                            "departure",
+                            "guests",
+                            "budget"
+                          ]
+                        },
+                        "value": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "edits"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "confirm_ops",
+              "title": "Approve operations",
+              "description": "Decide proposed ops by exact id. Optionally pass the payloadHash/factsVersion returned by apply_change to bind consent to the reviewed payload — a mismatch is rejected honestly. Stale/expired consent is rejected either way.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "opIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "ops": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "payloadHash": {
+                          "type": "string"
+                        },
+                        "factsVersion": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "decline_ops",
+              "title": "Decline operations",
+              "description": "Decide proposed ops by exact id. Optionally pass the payloadHash/factsVersion returned by apply_change to bind consent to the reviewed payload — a mismatch is rejected honestly. Stale/expired consent is rejected either way.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "opIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "ops": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "payloadHash": {
+                          "type": "string"
+                        },
+                        "factsVersion": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "get_receipt",
+              "title": "Causal receipt for a fact",
+              "description": "Ops and ledger events actually caused by a fact change (provenance-stamped).",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "fact": {
+                    "type": "string",
+                    "enum": [
+                      "arrival",
+                      "departure",
+                      "guests",
+                      "budget"
+                    ]
+                  }
+                },
+                "required": [
+                  "fact"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "get_status",
+              "title": "Plan status",
+              "description": "Current commitments, lifecycle states, spend, open decisions.",
+              "inputSchema": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {}
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            },
+            {
+              "name": "execute_approved",
+              "title": "Execute approved ops",
+              "description": "Execute every approved op in the open change set. Truthful outcomes: applied / rejected / requoted.",
+              "inputSchema": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {}
+              },
+              "execution": {
+                "taskSupport": "forbidden"
+              }
+            }
+          ]
+        },
+        "jsonrpc": "2.0",
+        "id": 1
+      },
+      "httpStatus": 200
+    },
+    {
+      "method": "tools/call",
+      "request": {
+        "method": "tools/call",
+        "params": {
+          "name": "get_status",
+          "arguments": {}
+        },
+        "jsonrpc": "2.0",
+        "id": 2
+      },
+      "response": {
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "7 live commitments; $196 committed, $0 sunk fees; 0 open decisions."
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "facts": {
+              "arrival": "2026-10-16T18:05",
+              "departure": "2026-10-18T17:00",
+              "guests": 2,
+              "budget": 300
+            },
+            "liveCommitments": [
+              {
+                "id": "calendar:visit",
+                "state": "confirmed",
+                "params": {
+                  "start": "2026-10-16T18:05",
+                  "end": "2026-10-18T17:00",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "grocery:arrival-delivery",
+                "state": "dispatched",
+                "params": {
+                  "windowStart": "2026-10-16T17:05",
+                  "windowEnd": "2026-10-16T19:05",
+                  "items": 14,
+                  "guests": 2
+                },
+                "cost": 76
+              },
+              {
+                "id": "restaurant:arrival-dinner",
+                "state": "confirmed",
+                "params": {
+                  "time": "2026-10-16T19:35",
+                  "partySize": 3
+                },
+                "cost": 120
+              },
+              {
+                "id": "routines:welcome",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-16T17:35",
+                  "guests": 2
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:coffee",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-17T07:55",
+                  "cups": 3
+                },
+                "cost": 0
+              },
+              {
+                "id": "pickup:airport",
+                "state": "confirmed",
+                "params": {
+                  "remindAt": "2026-10-16T16:55",
+                  "arrival": "2026-10-16T18:05"
+                },
+                "cost": 0
+              },
+              {
+                "id": "routines:farewell",
+                "state": "confirmed",
+                "params": {
+                  "runAt": "2026-10-18T16:00"
+                },
+                "cost": 0
+              }
+            ],
+            "feesCharged": 0,
+            "openOps": 0,
+            "budget": {
+              "budget": 300,
+              "committed": 196,
+              "fees": 0,
+              "pendingAdds": 0,
+              "projected": 196,
+              "feasible": true,
+              "overBy": 0
+            },
+            "factsVersion": 1,
+            "changeSet": null
+          }
+        },
+        "jsonrpc": "2.0",
+        "id": 2
+      },
+      "httpStatus": 200
+    }
+  ]
+}
