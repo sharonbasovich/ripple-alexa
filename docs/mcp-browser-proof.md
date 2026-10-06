@@ -5,6 +5,25 @@ ran the repository's `@modelcontextprotocol/sdk` client and sent JSON-RPC over
 Streamable HTTP through Vite's same-origin `/mcp` proxy to the loopback server.
 This is synthetic demo state only.
 
+## Final PR-head artifacts
+
+The final browser run tested commit
+`d7b11606155bbed402d3ba4225e17de864cdcc18`. The downloaded, unedited request and
+response trace is [ripple-browser-mcp-d7b1160.json](browser-evidence/ripple-browser-mcp-d7b1160.json).
+It contains 15 exchanges across the successful proposal/approval/execution,
+one later HTTP 500 transport failure, and a manual reconnect. Its envelope records
+the commit, timestamp, local endpoint, and Streamable HTTP transport.
+SHA-256: `5094e8d640fcdb51210b8707fa24bf62d949bd77a2238957e1394664e94831e1`.
+
+Chrome screenshots from the same run are shown inline in the task output: the
+pre-consent fee/hash review, the approved-but-not-executed state, and the cleared
+disconnected state with the retained HTTP 500 trace. After restarting the server,
+the browser was reconnected manually and displayed a fresh server status.
+
+On later transport loss, the UI cleared the last server state and kept the failed
+exchange in the trace. The user clicked Connect after the server restarted; no
+mutation was retried automatically.
+
 ## Reproduce
 
 Start `npm run mcp` and `npm run dev` in separate terminals. Open
@@ -70,11 +89,12 @@ reservation, charge, service, account, or external system was involved.
 
 ## Failure behavior
 
-With the MCP server stopped, the browser attempted `initialize` and received
-HTTP 500 from the local proxy. The page displayed **Not connected**, showed the
-failed JSON-RPC exchange, and stated that no offline engine action ran. Starting
-the server and retrying completed initialization, tool listing, and the calls
-above.
+With the MCP server stopped during an active session, the browser's selected
+`confirm_ops` call received HTTP 500 from the local proxy. The page displayed
+**Not connected**, cleared the prior server-state panel, retained the failed
+JSON-RPC exchange, and stated that no offline engine action ran. After the
+server restarted, a user-initiated connection completed initialization, tool
+listing, and a fresh `get_status` read.
 
 ## Demo-video beats
 
