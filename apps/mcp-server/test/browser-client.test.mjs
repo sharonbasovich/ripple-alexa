@@ -53,7 +53,10 @@ describe('browser MCP client over the repository server', () => {
       const before = await callBrowserMcpTool(session, 'get_status');
       const beforeState = before.liveCommitments;
       const proposed = await callBrowserMcpTool(session, 'apply_change', {
-        edits: [{ key: 'guests', value: 3 }],
+        edits: [
+          { key: 'arrival', value: '2026-10-17T09:40' },
+          { key: 'guests', value: 3 },
+        ],
       });
       expect(proposed.ok).toBe(true);
       expect(proposed.factsVersion).toBe(2);
@@ -74,7 +77,10 @@ describe('browser MCP client over the repository server', () => {
       expect(proposedState.liveCommitments).toEqual(beforeState);
       expect(proposedState.changeSet.ops.every((op) => op.status === 'proposed')).toBe(true);
 
-      const selected = ops[0];
+      const selected = ops.find((op) => op.kind === 'cancel' && op.requiresConsent);
+      expect(selected).toBeDefined();
+      expect(selected).toMatchObject({ fee: 75, costDelta: -120, requiresConsent: true });
+      if (!selected) throw new Error('fixture should include a fee-bearing cancellation');
       const approved = await callBrowserMcpTool(session, 'confirm_ops', {
         ops: [{ id: selected.id, payloadHash: selected.payloadHash, factsVersion: selected.factsVersion }],
       });
@@ -82,14 +88,22 @@ describe('browser MCP client over the repository server', () => {
       const approvedState = await callBrowserMcpTool(session, 'get_status');
       expect(approvedState.liveCommitments).toEqual(beforeState);
       expect(approvedState.changeSet.ops.find((op) => op.id === selected.id).status).toBe('approved');
+      const confirmation = session.trace.find((exchange) => exchange.request?.params?.name === 'confirm_ops');
+      expect(confirmation.request.params.arguments.ops[0]).toEqual({
+        id: selected.id,
+        payloadHash: selected.payloadHash,
+        factsVersion: selected.factsVersion,
+      });
 
       const execution = await callBrowserMcpTool(session, 'execute_approved');
       expect(execution.outcomes).toEqual(expect.arrayContaining([
-        expect.objectContaining({ opId: selected.id, status: expect.stringMatching(/executed|rejected|requoted/) }),
+        expect.objectContaining({ opId: selected.id, status: 'executed', feeCharged: 75 }),
       ]));
       const finalState = await callBrowserMcpTool(session, 'get_status');
       expect(finalState.changeSet.ops.find((op) => op.id === selected.id).status)
-        .toMatch(/executed|rejected|proposed/);
+        .toBe('executed');
+      expect(finalState.liveCommitments).toHaveLength(beforeState.length - 1);
+      expect(finalState.feesCharged).toBe(75);
       expect(session.trace.some((exchange) => exchange.method === 'tools/call' && exchange.request?.params?.name === 'confirm_ops')).toBe(true);
     } finally {
       await session.client.close();
