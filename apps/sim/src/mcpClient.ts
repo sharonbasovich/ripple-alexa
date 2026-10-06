@@ -15,12 +15,29 @@ export interface BrowserMcpSession {
   transport: StreamableHTTPClientTransport;
   tools: Tool[];
   trace: RpcExchange[];
+  initialStatus: Record<string, unknown>;
 }
 
 export class McpConnectionError extends Error {
   constructor(message: string, readonly trace: RpcExchange[]) {
     super(message);
     this.name = 'McpConnectionError';
+  }
+}
+
+/** A failed HTTP/fetch exchange means this session can no longer be trusted as connected. */
+export class McpTransportError extends Error {
+  constructor(message: string, readonly trace: RpcExchange[]) {
+    super(message);
+    this.name = 'McpTransportError';
+  }
+}
+
+/** A server or protocol tool rejection is an operation error, not a lost connection. */
+export class McpToolError extends Error {
+  constructor(message: string, readonly trace: RpcExchange[], readonly tool: string) {
+    super(message);
+    this.name = 'McpToolError';
   }
 }
 
@@ -42,6 +59,7 @@ export async function connectBrowserMcp(endpoint: URL): Promise<BrowserMcpSessio
   });
   const client = new Client({ name: 'ripple-browser-demo', version: '0.1.0' });
 
+  let tools: Tool[];
   try {
     // Client.connect performs initialize and notifications/initialized.
     // SDK 1.31's optional sessionId declaration conflicts with this repo's
@@ -49,11 +67,25 @@ export async function connectBrowserMcp(endpoint: URL): Promise<BrowserMcpSessio
     // implementation and is runtime-compatible with Client.connect.
     await client.connect(transport as unknown as Parameters<McpClient['connect']>[0]);
     // Do not claim a usable connection until tools/list succeeds too.
-    const { tools } = await client.listTools();
-    return { client, transport, tools, trace };
+    ({ tools } = await client.listTools());
   } catch (error) {
     await client.close().catch(() => undefined);
     throw new McpConnectionError(errorMessage(error), [...trace]);
+  }
+
+  const session: BrowserMcpSession = { client, transport, tools, trace, initialStatus: {} };
+  try {
+    // A session is ready for the UI only after its first server-state read.
+    const initialStatus = await callBrowserMcpTool(session, 'get_status');
+    if (initialStatus.ok !== true) {
+      throw new McpToolError('The server returned an unsuccessful get_status result.', [...trace], 'get_status');
+    }
+    session.tools = tools;
+    session.initialStatus = initialStatus;
+    return session;
+  } catch (error) {
+    await client.close().catch(() => undefined);
+    throw error;
   }
 }
 
@@ -62,14 +94,53 @@ export async function callBrowserMcpTool(
   name: string,
   args: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
-  const result = await session.client.callTool({ name, arguments: args });
+  const traceStart = session.trace.length;
+  let result;
+  try {
+    result = await session.client.callTool({ name, arguments: args });
+  } catch (error) {
+    const exchange = session.trace.slice(traceStart).find((entry) => entry.method === 'tools/call');
+    if (isTransportFailure(exchange, error)) {
+      throw new McpTransportError(errorMessage(error), [...session.trace]);
+    }
+    throw new McpToolError(errorMessage(error), [...session.trace], name);
+  }
+
+  const exchange = session.trace.slice(traceStart).find((entry) => entry.method === 'tools/call');
+  if (exchange?.httpStatus !== undefined && (exchange.httpStatus < 200 || exchange.httpStatus >= 300)) {
+    throw new McpTransportError(`MCP server returned HTTP ${exchange.httpStatus}.`, [...session.trace]);
+  }
   if (result.isError) {
-    throw new Error(`MCP tool ${name} returned an error: ${JSON.stringify(result)}`);
+    throw new McpToolError(`MCP tool ${name} returned an error: ${JSON.stringify(result)}`, [...session.trace], name);
   }
   if (!result.structuredContent) {
-    throw new Error(`MCP tool ${name} returned no structured content.`);
+    throw new McpToolError(`MCP tool ${name} returned no structured content.`, [...session.trace], name);
   }
   return result.structuredContent as Record<string, unknown>;
+}
+
+function isTransportFailure(exchange: RpcExchange | undefined, error: unknown): boolean {
+  if (!exchange) return !isJsonRpcValidationError(error);
+  if (exchange.error) return true;
+  if (exchange.httpStatus !== undefined && (exchange.httpStatus < 200 || exchange.httpStatus >= 300)) return true;
+  // JSON-RPC validation errors arrive as a valid HTTP response and leave the
+  // Streamable HTTP session usable. Keep them as tool errors in the UI.
+  return !isJsonRpcResponse(exchange.response) && !isJsonRpcValidationError(error);
+}
+
+function isJsonRpcResponse(response: unknown): boolean {
+  return Boolean(
+    response
+    && typeof response === 'object'
+    && 'jsonrpc' in response
+    && ('result' in response || 'error' in response),
+  );
+}
+
+function isJsonRpcValidationError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === -32600 || code === -32601 || code === -32602;
 }
 
 function traceFetch(trace: RpcExchange[]): typeof fetch {

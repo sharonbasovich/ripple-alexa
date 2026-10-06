@@ -331,6 +331,8 @@ input:focus-visible { outline: 3px solid var(--accent-soft); }
 .mcp-consent-context dd { margin: 0; overflow-wrap: anywhere; font-size: 0.8rem; }
 .mcp-execute { margin-top: 14px; }
 .mcp-evidence > .mcp-state-head > span { color: var(--ink-dim); font-size: 0.85rem; }
+.mcp-evidence-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.mcp-evidence-actions span { color: var(--ink-dim); font-size: 0.85rem; }
 .mcp-trace { padding-left: 22px; margin: 14px 0 0; display: grid; gap: 8px; }
 .mcp-trace > li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; }
 .mcp-trace summary { font-size: 0.88rem; }

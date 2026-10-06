@@ -71,6 +71,11 @@ approval state, and captured JSON-RPC request/response bodies. The server's
 states remain unchanged before consent. A failed connection stays failed; it
 does not invoke the offline engine.
 
+The evidence panel keeps exchanges across manual reconnects and can download
+the actual request/response trace as JSON, tagged with the tested commit. If a
+later HTTP transport fails, the page preserves the failed exchange, clears the
+last server state, and requires the user to reconnect before continuing.
+
 This local setup needs no paid hosting or always-on server. The production build
 is a static offline preview; it has no MCP proxy and leaves the Connect button
 disabled. The MCP server remains bound to loopback, so no CORS or external

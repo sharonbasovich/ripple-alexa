@@ -9,6 +9,7 @@ import { createRippleMcpServer, handleMcpRequest } from '../src/server.mjs';
 let httpServer;
 let world;
 let endpoint;
+let failToolCalls = false;
 
 beforeAll(async () => {
   world = E.createWorld(E.FIXTURE_FACTS, E.PLAN_CREATED_AT);
@@ -24,6 +25,9 @@ beforeAll(async () => {
         req.body = body ? JSON.parse(body) : undefined;
       } catch {
         return void res.writeHead(400).end('bad json');
+      }
+      if (failToolCalls && req.body?.method === 'tools/call') {
+        return void res.writeHead(503, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'server disconnected' }));
       }
       await handleMcpRequest(world, serverFactory, req, res);
     });
@@ -126,6 +130,33 @@ describe('browser MCP client over the repository server', () => {
       });
     } finally {
       await new Promise((resolve) => failedServer.close(resolve));
+    }
+  });
+
+  it('classifies later transport loss, preserves the failed trace, and allows an explicit reconnect', async () => {
+    const session = await connectBrowserMcp(endpoint);
+    const before = E.worldSummary(world);
+    try {
+      failToolCalls = true;
+      await expect(callBrowserMcpTool(session, 'get_status')).rejects.toMatchObject({
+        name: 'McpTransportError',
+        trace: expect.arrayContaining([
+          expect.objectContaining({ method: 'tools/call', httpStatus: 503 }),
+        ]),
+      });
+      expect(E.worldSummary(world)).toEqual(before);
+    } finally {
+      failToolCalls = false;
+      await session.client.close();
+    }
+
+    const reconnected = await connectBrowserMcp(endpoint);
+    try {
+      expect(reconnected.initialStatus.ok).toBe(true);
+      expect(reconnected.tools.map((tool) => tool.name)).toContain('apply_change');
+      expect(reconnected.trace.map((exchange) => exchange.method)).toContain('initialize');
+    } finally {
+      await reconnected.client.close();
     }
   });
 });

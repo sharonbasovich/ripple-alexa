@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   callBrowserMcpTool,
   connectBrowserMcp,
   McpConnectionError,
+  McpToolError,
+  McpTransportError,
   type BrowserMcpSession,
   type RpcExchange,
 } from './mcpClient';
@@ -65,7 +67,15 @@ const SAMPLE_FACTS = {
   budget: 300,
 };
 
-export function McpDemo() {
+const TESTED_COMMIT = (import.meta.env as ImportMetaEnv & { VITE_GIT_COMMIT?: string }).VITE_GIT_COMMIT ?? 'unknown';
+
+export interface McpDemoProps {
+  endpoint?: URL;
+  allowConnect?: boolean;
+}
+
+export function McpDemo(props: McpDemoProps = {}) {
+  const { endpoint, allowConnect = import.meta.env.DEV } = props;
   const [session, setSession] = useState<BrowserMcpSession | null>(null);
   const [tools, setTools] = useState<string[]>([]);
   const [status, setStatus] = useState<McpStatus | null>(null);
@@ -76,6 +86,7 @@ export function McpDemo() {
   const [message, setMessage] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const traceCursor = useRef(new WeakMap<BrowserMcpSession, number>());
 
   useEffect(() => () => {
     void session?.client.close().catch(() => undefined);
@@ -91,42 +102,60 @@ export function McpDemo() {
     [afterProposal, baseline],
   );
 
+  const appendSessionTrace = (active: BrowserMcpSession) => {
+    const from = traceCursor.current.get(active) ?? 0;
+    const added = active.trace.slice(from);
+    traceCursor.current.set(active, active.trace.length);
+    if (added.length) setTrace((previous) => [...previous, ...added]);
+  };
+
   const connect = async () => {
-    let createdSession: BrowserMcpSession | null = null;
     setConnecting(true);
     setError('');
     setMessage('');
+    setTools([]);
     setStatus(null);
     setBaseline(null);
     setAfterProposal(null);
+    setSession(null);
     try {
-      createdSession = await connectBrowserMcp(new URL('/mcp', window.location.origin));
+      const createdSession = await connectBrowserMcp(endpoint ?? new URL('/mcp', window.location.origin));
+      appendSessionTrace(createdSession);
+      const initial = createdSession.initialStatus as unknown as McpStatus;
       setSession(createdSession);
       setTools(createdSession.tools.map((tool) => tool.name).sort());
-      setTrace([...createdSession.trace]);
-      const initial = (await callBrowserMcpTool(createdSession, 'get_status', {})) as unknown as McpStatus;
-      if (!initial.ok) throw new Error('The server returned an unsuccessful get_status result.');
       setStatus(initial);
       setMessage('Browser MCP client initialized, listed tools, and read server state.');
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
-      if (cause instanceof McpConnectionError) setTrace(cause.trace);
-      setError(
-        `MCP connection failed: ${detail}. No offline engine action was run. Start the local MCP server and Vite dev server, then retry.`,
-      );
+      if (cause instanceof McpConnectionError || cause instanceof McpTransportError || cause instanceof McpToolError) {
+        setTrace((previous) => [...previous, ...cause.trace]);
+      }
+      setSession(null);
+      setTools([]);
+      setStatus(null);
+      if (cause instanceof McpConnectionError) {
+        setError(`MCP initialization or tools/list failed: ${detail}. No offline engine action was run.`);
+      } else if (cause instanceof McpTransportError) {
+        setError(`MCP transport failed during the initial get_status read: ${detail}. No offline engine action was run.`);
+      } else if (cause instanceof McpToolError) {
+        setError(`The initial get_status tool was rejected: ${detail}. No MCP session was marked connected, and no offline engine action was run.`);
+      } else {
+        setError(`MCP connection setup failed: ${detail}. No offline engine action was run.`);
+      }
     } finally {
       setConnecting(false);
-      if (createdSession) setTrace([...createdSession.trace]);
     }
   };
 
-  const disconnect = async () => {
-    if (session) await session.client.close().catch(() => undefined);
+  const disconnect = () => {
+    if (session) appendSessionTrace(session);
     setSession(null);
     setTools([]);
     setStatus(null);
     setBaseline(null);
     setAfterProposal(null);
+    setError('');
     setMessage('Disconnected from the MCP server.');
   };
 
@@ -146,9 +175,22 @@ export function McpDemo() {
       const result = (await callBrowserMcpTool(session, tool, args)) as unknown as T;
       await onResult(result);
     } catch (cause) {
-      setError(`${tool} failed: ${cause instanceof Error ? cause.message : String(cause)}. The local engine was not used.`);
+      if (cause instanceof McpTransportError) {
+        appendSessionTrace(session);
+        setSession((current) => current === session ? null : current);
+        setTools([]);
+        setStatus(null);
+        setBaseline(null);
+        setAfterProposal(null);
+        setMessage('The last server state was cleared because the transport failed. Reconnect to read current state.');
+        setError(`MCP transport disconnected during ${tool}: ${cause.message}. No offline engine action was run; reconnect manually to continue.`);
+      } else if (cause instanceof McpToolError) {
+        setError(`${tool} was rejected by the MCP server: ${cause.message}. The MCP session remains connected; no offline engine action was run.`);
+      } else {
+        setError(`${tool} failed: ${cause instanceof Error ? cause.message : String(cause)}. The MCP session remains connected; no offline engine action was run.`);
+      }
     } finally {
-      setTrace([...session.trace]);
+      appendSessionTrace(session);
       setBusy(false);
     }
   };
@@ -213,6 +255,23 @@ export function McpDemo() {
       },
     );
 
+  const downloadEvidence = () => {
+    const artifact = {
+      name: 'Ripple browser MCP evidence',
+      testedCommit: TESTED_COMMIT,
+      capturedAt: new Date().toISOString(),
+      endpoint: new URL('/mcp', window.location.origin).toString(),
+      transport: 'Streamable HTTP',
+      exchanges: trace,
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(artifact, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ripple-browser-mcp-evidence-${TESTED_COMMIT.slice(0, 12)}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
   return (
     <div className="app device-desktop mcp-app">
       <header className="hero">
@@ -242,7 +301,7 @@ export function McpDemo() {
           </div>
           <div className="mcp-actions">
             {!connected ? (
-              <button className="primary" onClick={connect} disabled={connecting || !import.meta.env.DEV}>
+              <button className="primary" onClick={connect} disabled={connecting || !allowConnect}>
                 {connecting ? 'Connecting…' : 'Connect to MCP server'}
               </button>
             ) : (
@@ -398,7 +457,10 @@ export function McpDemo() {
               <h2>Browser JSON-RPC evidence</h2>
               <p className="muted">Captured from the SDK client's actual fetch calls and server responses.</p>
             </div>
-            <span>{trace.length} exchange{trace.length === 1 ? '' : 's'}</span>
+            <div className="mcp-evidence-actions">
+              <span>{trace.length} exchange{trace.length === 1 ? '' : 's'}</span>
+              {trace.length > 0 && <button onClick={downloadEvidence}>Download JSON-RPC evidence</button>}
+            </div>
           </div>
           {trace.length ? (
             <ol className="mcp-trace">
