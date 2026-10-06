@@ -27,5 +27,5 @@ const httpServer = http.createServer((req, res) => {
 });
 
 httpServer.listen(8787, '127.0.0.1', () => {
-  console.log('ripple MCP inspection server (local dev tool, NOT an Alexa add-on) listening on http://127.0.0.1:8787/mcp');
+  console.log('ripple MCP server (local synthetic demo; NOT an Alexa add-on) listening on http://127.0.0.1:8787/mcp');
 });

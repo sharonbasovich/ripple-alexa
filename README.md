@@ -44,22 +44,49 @@ npm run build      # production build (apps/sim/dist)
 npm run typecheck  # strict TS across workspaces
 npm run lint       # eslint
 npm test           # engine: unit + integration + property tests
-npm run test:sim       # sim state-layer tests (Node/vitest — not a browser run)
+npm run test:sim       # sim state-layer tests (Node/vitest - not a browser run)
 npm run test -w @ripple/mcp-server    # MCP wrapper: real HTTP transport + engine parity
-npm run mcp                           # optional local MCP inspector at http://127.0.0.1:8787/mcp
-                                      # (dev tool — NOT an Alexa add-on; loopback only)
 ```
 
-The deployed site is a fully static build — no backend, no network calls, no
-microphone, no LLM. Optional browser speech synthesis reads summaries aloud
-(< 75 words); text is always present.
+### Real browser MCP demonstration
+
+The **Offline preview** uses the deterministic in-browser engine and sends no MCP
+requests. To run the separate **Connected MCP demo**, use two local terminals:
+
+```bash
+# Terminal 1: start the self-hosted, loopback-only MCP server
+npm run mcp
+
+# Terminal 2: start Vite and its same-origin /mcp proxy
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`, choose **Connected MCP demo**, then select
+**Connect to MCP server**. The browser uses the MCP SDK's Streamable HTTP client;
+it sends `initialize`, `tools/list` and `tools/call` requests through Vite's
+same-origin `/mcp` route. The page shows the server's tool list, returned
+before/after operation parameters, costs, exact payload hash and facts revision,
+approval state, and captured JSON-RPC request/response bodies. The server's
+`get_status` responses also verify that commitment parameters and lifecycle
+states remain unchanged before consent. A failed connection stays failed; it
+does not invoke the offline engine.
+
+This local setup needs no paid hosting or always-on server. The production build
+is a static offline preview; it has no MCP proxy and leaves the Connect button
+disabled. The MCP server remains bound to loopback, so no CORS or external
+network exposure is enabled. Amazon's [official hackathon FAQ](https://amazonappdev2026.devpost.com/details/faqs)
+allows the web-based simulated path when the page acts as a real MCP client over
+Streamable HTTP.
+
+Optional browser speech synthesis reads summaries aloud (< 75 words); text is
+always present.
 
 ## Repository layout
 
 ```
 packages/engine   Pure deterministic core: facts, diff, consent, ledger, replay, policies
-apps/sim          Vite + React simulated Alexa+ experience (the demo)
-apps/mcp-server   Optional local-only MCP inspection wrapper (dev tool, NOT an Alexa add-on)
+apps/sim          Vite + React simulated Alexa+ experience, offline and connected modes
+apps/mcp-server   Self-hosted local MCP server used by the browser client (loopback only)
 docs/             Demo script, Devpost draft, friction log, feedback, screenshots,
                   demo.mp4 (1:49, captioned) + demo-captions.txt
 .github/workflows Pages deploy (typecheck + lint + all test suites gate the artifact)
