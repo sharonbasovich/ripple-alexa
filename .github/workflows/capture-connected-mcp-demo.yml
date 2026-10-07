@@ -64,14 +64,14 @@ jobs:
           probe_mcp_proxy() {
             node scripts/probe-mcp-readiness.mjs \
               http://127.0.0.1:5173/mcp \
-              artifacts/mcp-capture/mcp-readiness-response.txt
+              artifacts/mcp-capture/mcp-readiness-response.txt \
+              > artifacts/mcp-capture/mcp-readiness-probe.log 2>&1
           }
 
           startup_deadline=$((SECONDS + 60))
           mcp_services_ready=false
           while (( SECONDS < startup_deadline )); do
-            if grep -q 'listening on http://127.0.0.1:8787/mcp' artifacts/mcp-capture/mcp-server.log \
-              && curl --fail --silent --show-error --max-time 2 http://127.0.0.1:5173/ \
+            if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:5173/ \
                 | grep --fixed-strings --quiet '<title>Ripple - simulated Alexa+ experience</title>' \
               && probe_mcp_proxy; then
               mcp_services_ready=true
@@ -82,9 +82,11 @@ jobs:
           if [[ "$mcp_services_ready" != true ]]; then
             cat artifacts/mcp-capture/mcp-server.log
             cat artifacts/mcp-capture/vite.log
+            cat artifacts/mcp-capture/mcp-readiness-probe.log 2>/dev/null || true
             cat artifacts/mcp-capture/mcp-readiness-response.txt 2>/dev/null || true
             exit 1
           fi
+          cat artifacts/mcp-capture/mcp-readiness-probe.log
 
           CAPTURE_DIR="$PWD/artifacts/mcp-capture" \
             CAPTURE_COMMIT="$CAPTURE_COMMIT" \
