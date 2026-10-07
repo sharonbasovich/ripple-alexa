@@ -61,23 +61,10 @@ jobs:
           }
           trap cleanup EXIT
 
-          mcp_init_probe_json='{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"capture-readiness","version":"1.0.0"}}}'
           probe_mcp_proxy() {
-            curl --fail --silent --show-error --max-time 2 \
-              -H 'Content-Type: application/json' \
-              -H 'Accept: application/json, text/event-stream' \
-              --data-binary "$mcp_init_probe_json" \
+            node scripts/probe-mcp-readiness.mjs \
               http://127.0.0.1:5173/mcp \
-              --output artifacts/mcp-capture/mcp-readiness-response.txt \
-              && node --input-type=module -e '
-                import fs from "node:fs";
-                const body = fs.readFileSync("artifacts/mcp-capture/mcp-readiness-response.txt", "utf8").trim();
-                const eventData = body.split(/\r?\n/).find((line) => line.startsWith("data:"));
-                const response = JSON.parse(eventData ? eventData.slice(5).trim() : body);
-                if (response.result?.protocolVersion !== "2025-11-25" || response.result?.serverInfo?.name !== "ripple-sim-inspection") {
-                  throw new Error("The MCP proxy readiness probe returned an unexpected initialize response.");
-                }
-              '
+              artifacts/mcp-capture/mcp-readiness-response.txt
           }
 
           startup_deadline=$((SECONDS + 60))
