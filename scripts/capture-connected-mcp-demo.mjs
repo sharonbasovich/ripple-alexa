@@ -269,10 +269,18 @@ try {
   assert.match(serverStates[1], /7 live commitments; \$196 committed, \$0 sunk fees; 7 open decisions/i);
   assert.match(serverStates[2], /7 live commitments; \$196 committed, \$0 sunk fees; 6 open decisions/i);
   assert.match(serverStates[3], /6 live commitments; \$76 committed, \$75 sunk fees; 6 open decisions/i);
-  assert.ok(networkExchanges.length === trace.exchanges.length, 'The browser made the MCP exchanges over the Vite localhost proxy.');
-  assert.ok(networkExchanges.every((exchange) => exchange.httpMethod === 'POST'));
-  assert.deepEqual(networkExchanges.map((exchange) => exchange.status), trace.exchanges.map((exchange) => exchange.httpStatus));
   await fs.writeFile(path.join(outputDir, 'browser-network-summary.json'), `${JSON.stringify(networkExchanges, null, 2)}\n`);
+  const unmatchedBrowserRequests = networkExchanges.filter((exchange) => exchange.rpcMethod);
+  for (const exchange of trace.exchanges.filter((item) => item.method !== 'notifications/initialized')) {
+    const index = unmatchedBrowserRequests.findIndex((observed) =>
+      observed.rpcMethod === exchange.method
+      && observed.toolName === (exchange.request.params?.name ?? null)
+      && observed.status === exchange.httpStatus,
+    );
+    assert.notEqual(index, -1, `Missing browser /mcp response for ${exchange.method} (${exchange.httpStatus}).`);
+    assert.equal(unmatchedBrowserRequests[index].httpMethod, 'POST', `Browser MCP ${exchange.method} was not a POST.`);
+    unmatchedBrowserRequests.splice(index, 1);
+  }
 
   const statusResults = calls
     .filter((exchange) => exchange.request.params.name === 'get_status')
