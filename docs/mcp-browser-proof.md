@@ -15,6 +15,15 @@ one later HTTP 500 transport failure, and a manual reconnect. Its envelope recor
 the commit, timestamp, local endpoint, and Streamable HTTP transport.
 SHA-256: `5094e8d640fcdb51210b8707fa24bf62d949bd77a2238957e1394664e94831e1`.
 
+A second post-merge Chrome run tested
+`c6e2576cf26761090948bde171486a1fb57930a6`; its downloaded request/response
+trace is [ripple-browser-mcp-c6e2576.json](browser-evidence/ripple-browser-mcp-c6e2576.json).
+That run records the same initialization, seven returned tools, proposal,
+unchanged pre-consent commitments, exact approval, separate execution, and final
+server state. It is genuine browser network evidence, not a video recording.
+The new capture workflow produces raw footage and an action log for a separately
+narrated edit.
+
 Chrome screenshots from the same run are shown inline in the task output: the
 pre-consent fee/hash review, the approved-but-not-executed state, and the cleared
 disconnected state with the retained HTTP 500 trace. After restarting the server,

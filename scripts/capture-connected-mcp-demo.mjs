@@ -38,6 +38,11 @@ const page = await context.newPage();
 const video = page.video();
 const networkExchanges = [];
 const recordingStartedAt = Date.now();
+const actionLog = [];
+
+function mark(event, details = {}) {
+  actionLog.push({ offsetMs: Date.now() - recordingStartedAt, event, ...details });
+}
 
 page.on('response', (response) => {
   if (new URL(response.url()).pathname !== '/mcp') return;
@@ -59,10 +64,12 @@ page.on('response', (response) => {
 async function holdUntil(milliseconds) {
   const remaining = milliseconds - (Date.now() - recordingStartedAt);
   if (remaining > 0) await page.waitForTimeout(remaining);
+  mark('hold_completed', { targetOffsetMs: milliseconds });
 }
 
 async function saveScreenshot(name) {
   await page.screenshot({ path: path.join(screenshotDir, name), fullPage: false });
+  mark('screenshot_saved', { file: name });
 }
 
 function normalize(text) {
@@ -122,27 +129,45 @@ let captureError;
 let manifest;
 
 try {
+  mark('recording_started', { viewport, pageUrl });
   await page.goto(pageUrl, { waitUntil: 'networkidle' });
   await addCaptureOnlyPointer();
 
   const offlineLabel = await page.locator('.sim-banner').innerText();
   assert.match(offlineLabel, /Simulated Alexa\+ experience.*fictional services/i);
+  mark('offline_preview_disclosure_visible');
   await saveScreenshot('00-offline-preview-disclosure.png');
-  await holdUntil(12_000);
+  await holdUntil(8_000);
 
   await page.getByRole('button', { name: 'Connected MCP demo' }).click();
+  mark('connected_mode_selected');
   await page.getByRole('button', { name: 'Connect to MCP server' }).click();
+  mark('connect_requested');
   await page.waitForFunction(() => document.querySelector('.connection-badge')?.textContent?.trim() === 'MCP connected');
   await page.waitForFunction(() => document.querySelectorAll('.mcp-tool-list li').length === 7);
   const listedTools = await page.locator('.mcp-tool-list code').allTextContents();
   assert.deepEqual([...listedTools].sort(), [...requiredTools].sort(), 'The connected server must return the expected tool list.');
   const initialStatus = normalize(await page.locator('.mcp-state-panel').innerText());
   assert.match(initialStatus, /7 live commitments.*\$\s*0 sunk fees/i);
+  const initialFacts = normalize(await page.locator('.mcp-state-panel .mcp-facts').first().innerText());
+  assert.match(initialFacts, /arrival 2026-10-16T18:05.*departure 2026-10-18T17:00.*2 guests/i);
+  mark('browser_mcp_initialized_and_tools_listed', { tools: listedTools, initialFacts });
   await saveScreenshot('01-connected-init-and-tools.png');
+  await holdUntil(20_000);
+
+  const commitments = page.locator('.mcp-commitments');
+  await commitments.locator('summary').click();
+  const initialCommitments = normalize(await commitments.innerText());
+  assert.match(initialCommitments, /2026-10-18T17:00/, 'The visible baseline commitment parameters must retain the Sunday departure.');
+  mark('baseline_commitments_inspected', { sundayDeparture: '2026-10-18T17:00' });
+  await saveScreenshot('02-baseline-commitments-and-sunday-departure.png');
   await holdUntil(28_000);
 
   await page.getByRole('button', { name: 'Propose Saturday arrival + one guest' }).click();
+  mark('apply_change_requested');
   await page.waitForFunction(() => document.querySelectorAll('.mcp-op').length === 7);
+  const proposedFacts = normalize(await page.locator('.mcp-state-panel .mcp-facts').first().innerText());
+  assert.match(proposedFacts, /arrival 2026-10-17T09:40.*departure 2026-10-18T17:00.*3 guests/i);
   const restaurant = page.locator('.mcp-op').filter({ hasText: 'Cancel Arrival-day dinner reservation' });
   await restaurant.scrollIntoViewIfNeeded();
   const reviewText = normalize(await restaurant.innerText());
@@ -154,45 +179,67 @@ try {
   const beforeConsent = normalize(await page.locator('.mcp-state-panel').innerText());
   assert.match(beforeConsent, /7 live commitments.*7 proposed decisions.*\$\s*0 sunk fees/i);
   assert.match(beforeConsent, /no booking parameters or lifecycle states changed before approval/i);
+  mark('seven_proposals_and_unchanged_baseline_verified', {
+    arrival: '2026-10-17T09:40', guests: 3, sundayDeparture: '2026-10-18T17:00',
+    liveCommitments: 7, proposedDecisions: 7, sunkFees: 0,
+  });
+  await page.locator('.mcp-state-panel').scrollIntoViewIfNeeded();
+  await saveScreenshot('03-server-confirms-current-commitments-unchanged.png');
+  await holdUntil(40_000);
+
+  await restaurant.scrollIntoViewIfNeeded();
   await restaurant.locator('h3').hover();
-  await saveScreenshot('02-fee-before-approval.png');
-  await holdUntil(54_000);
+  mark('restaurant_cancellation_reviewed_before_consent', { fee: 75, operationId: '0f606a50', payloadHash: '942c42ac', factsVersion: 2 });
+  await saveScreenshot('04-fee-before-approval.png');
+  await holdUntil(52_000);
 
   await restaurant.getByRole('button', { name: 'Approve this exact operation' }).click();
+  mark('exact_operation_approval_requested', { operationId: '0f606a50', payloadHash: '942c42ac', factsVersion: 2 });
   await page.waitForFunction(() => document.querySelector('.mcp-op.status-approved .mcp-proof')?.textContent?.includes('awaiting execute_approved'));
   const afterConsent = normalize(await page.locator('.mcp-state-panel').innerText());
   assert.match(afterConsent, /7 live commitments.*6 proposed decisions.*\$\s*0 sunk fees/i);
+  assert.match(afterConsent, /projected plan, including pending proposals/i);
+  assert.match(afterConsent, /not completed spend/i);
+  mark('approval_recorded_without_execution', { liveCommitments: 7, proposedDecisions: 6, approvedOperations: 1, sunkFees: 0 });
+  await page.locator('.mcp-state-panel').scrollIntoViewIfNeeded();
+  await saveScreenshot('05-approved-server-state-unchanged.png');
+  await holdUntil(60_000);
   const consentContext = restaurant.locator('details.mcp-consent-context');
   if (!(await consentContext.getAttribute('open'))) await consentContext.locator('summary').click();
   await restaurant.scrollIntoViewIfNeeded();
   await restaurant.locator('h3').hover();
-  await saveScreenshot('03-approved-awaiting-execution.png');
-  await holdUntil(76_000);
+  await saveScreenshot('06-approved-awaiting-separate-execution.png');
+  await holdUntil(66_000);
 
   await page.getByRole('button', { name: 'Execute 1 approved change on server' }).click();
+  mark('execute_approved_requested_separately');
   await page.waitForFunction(() => document.querySelector('.mcp-op.status-executed') !== null);
   await page.waitForFunction(() => /6 live commitments/.test(document.querySelector('.mcp-state-panel')?.innerText ?? ''));
   assert.equal(await page.locator('.mcp-op.status-executed').count(), 1);
   assert.equal(await page.locator('.mcp-op.status-proposed').count(), 6);
   const finalPanel = normalize(await page.locator('.mcp-state-panel').innerText());
   assert.match(finalPanel, /6 live commitments.*6 proposed decisions.*\$\s*75 sunk fees/i);
+  assert.match(finalPanel, /projected plan, including pending proposals.*\$\s*329\s*\/\s*\$\s*300.*not completed spend/i);
+  mark('one_cancellation_executed_server_state_verified', {
+    executedOperations: 1, liveCommitments: 6, pendingDecisions: 6, committed: 76, sunkFees: 75,
+    projectedBudget: 329, budgetLimit: 300,
+  });
   await restaurant.scrollIntoViewIfNeeded();
   await restaurant.locator('h3').hover();
-  await saveScreenshot('04-executed-cancellation.png');
-  await page.locator('.mcp-state-panel').scrollIntoViewIfNeeded();
-  await page.locator('.mcp-state-panel h2').hover();
-  await saveScreenshot('05-final-server-state.png');
-  await holdUntil(100_000);
+  await saveScreenshot('07-one-executed-six-still-pending.png');
+  await holdUntil(80_000);
 
   const evidencePanel = page.locator('.mcp-evidence');
   await evidencePanel.scrollIntoViewIfNeeded();
   const traceRows = page.locator('.mcp-trace details');
   await page.waitForFunction(() => document.querySelectorAll('.mcp-trace details').length === 10);
-  for (const index of [0, 2, 8, 9]) {
+  for (const index of [0, 2, 4, 6, 8, 9]) {
     const row = traceRows.nth(index);
     if (!(await row.getAttribute('open'))) await row.locator('summary').click();
   }
-  await saveScreenshot('06-brief-json-rpc-proof.png');
+  mark('real_browser_json_rpc_evidence_opened', { exchanges: 10, visibleRows: [0, 2, 4, 6, 8, 9] });
+  await saveScreenshot('08-brief-json-rpc-proof.png');
+  await holdUntil(92_000);
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -227,10 +274,24 @@ try {
   assert.deepEqual(networkExchanges.map((exchange) => exchange.status), trace.exchanges.map((exchange) => exchange.httpStatus));
   await fs.writeFile(path.join(outputDir, 'browser-network-summary.json'), `${JSON.stringify(networkExchanges, null, 2)}\n`);
 
+  const statusResults = calls
+    .filter((exchange) => exchange.request.params.name === 'get_status')
+    .map((exchange) => exchange.response?.result?.structuredContent);
+  assert.equal(statusResults.length, 4);
+  assert.deepEqual(statusResults[0].liveCommitments, statusResults[1].liveCommitments,
+    'The proposal must not mutate any live commitment before consent.');
+  assert.deepEqual(statusResults[1].liveCommitments, statusResults[2].liveCommitments,
+    'Recording approval must not mutate any live commitment before separate execution.');
+  assert.equal(statusResults[0].facts.departure, '2026-10-18T17:00');
+  assert.equal(statusResults[1].facts.departure, '2026-10-18T17:00');
+  assert.equal(statusResults[1].facts.arrival, '2026-10-17T09:40');
+  assert.equal(statusResults[1].facts.guests, 3);
+  mark('downloaded_trace_proves_preconsent_and_preexecution_immutability');
+
   await page.locator('.mcp-state-panel').scrollIntoViewIfNeeded();
   await page.locator('.mcp-state-panel h2').hover();
-  await saveScreenshot('07-ending-on-server-outcome.png');
-  await holdUntil(135_000);
+  await saveScreenshot('09-ending-on-server-outcome-and-budget-note.png');
+  await holdUntil(120_000);
 
   manifest = {
     name: 'Ripple connected MCP browser capture',
@@ -247,6 +308,9 @@ try {
     traceFile: path.basename(tracePath),
     traceExchanges: trace.exchanges.length,
     listedTools: requiredTools,
+    actionLogFile: 'capture-action-log.json',
+    verifiedPreConsentCommitmentsUnchanged: true,
+    verifiedApprovalDoesNotChangeCommitments: true,
     syntheticDemoOnly: true,
     captureOverlays: ['mouse-pointer ring', 'fictional-services/simulated-fees disclosure strip'],
   };
@@ -254,6 +318,13 @@ try {
 } catch (error) {
   captureError = error;
 } finally {
+  mark(captureError ? 'capture_failed' : 'capture_actions_complete', captureError ? { message: String(captureError) } : {});
+  await fs.writeFile(path.join(outputDir, 'capture-action-log.json'), `${JSON.stringify({
+    name: 'Ripple connected MCP capture action log',
+    testedCommit,
+    recordingStartedAt: new Date(recordingStartedAt).toISOString(),
+    timeline: actionLog,
+  }, null, 2)}\n`);
   await context.close();
   if (video) {
     const videoPath = await video.path();

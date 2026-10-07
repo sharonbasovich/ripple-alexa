@@ -337,9 +337,13 @@ export function McpDemo(props: McpDemoProps = {}) {
                     <h2>Server state</h2>
                     <p className="muted">Refreshed with <code>get_status</code> · facts revision {status.factsVersion}</p>
                   </div>
-                  <strong className={status.budget.feasible ? 'mcp-budget-ok' : 'mcp-budget-over'}>
-                    ${status.budget.projected} / ${status.budget.budget}
-                  </strong>
+                  <div className="mcp-budget" role="note" aria-label={`Projected budget including pending proposals: $${status.budget.projected} of $${status.budget.budget}; not completed spend`}>
+                    <span className="mcp-budget-label">Projected plan, including pending proposals</span>
+                    <strong className={status.budget.feasible ? 'mcp-budget-ok' : 'mcp-budget-over'}>
+                      ${status.budget.projected} / ${status.budget.budget}
+                    </strong>
+                    <span className="mcp-budget-note">Not completed spend</span>
+                  </div>
                 </div>
                 <p className="mcp-facts">
                   Arrival {status.facts.arrival} · departure {status.facts.departure} · {status.facts.guests} guests
