@@ -1,0 +1,86 @@
+name: Capture connected MCP demo
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/capture-connected-mcp-demo.yml
+      - apps/mcp-server/**
+      - apps/sim/**
+      - docs/demo-captions-mcp.vtt
+      - packages/engine/**
+      - scripts/capture-connected-mcp-demo.mjs
+      - package-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CAPTURE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install project and pinned capture browser
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false playwright@1.63.0
+          npx playwright install --with-deps chromium
+
+      - name: Build the app and deterministic engine
+        run: npm run build
+
+      - name: Run local server and capture the real browser flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/mcp-capture
+
+          node apps/mcp-server/src/index.mjs > artifacts/mcp-capture/mcp-server.log 2>&1 &
+          MCP_PID=$!
+          VITE_GIT_COMMIT="$CAPTURE_COMMIT" ./node_modules/.bin/vite --host 127.0.0.1 > artifacts/mcp-capture/vite.log 2>&1 &
+          VITE_PID=$!
+          cleanup() {
+            kill "$VITE_PID" "$MCP_PID" 2>/dev/null || true
+            wait "$VITE_PID" "$MCP_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 60); do
+            if grep -q 'listening on http://127.0.0.1:8787/mcp' artifacts/mcp-capture/mcp-server.log \
+              && curl --fail --silent http://127.0.0.1:5173/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if ! grep -q 'listening on http://127.0.0.1:8787/mcp' artifacts/mcp-capture/mcp-server.log \
+            || ! curl --fail --silent http://127.0.0.1:5173/ >/dev/null; then
+            cat artifacts/mcp-capture/mcp-server.log
+            cat artifacts/mcp-capture/vite.log
+            exit 1
+          fi
+
+          CAPTURE_DIR="$PWD/artifacts/mcp-capture" \
+            CAPTURE_COMMIT="$CAPTURE_COMMIT" \
+            VITE_GIT_COMMIT="$CAPTURE_COMMIT" \
+            node scripts/capture-connected-mcp-demo.mjs
+
+      - name: Upload raw capture and proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ripple-connected-mcp-capture-${{ env.CAPTURE_COMMIT }}
+          path: artifacts/mcp-capture/
+          if-no-files-found: warn
+          retention-days: 14

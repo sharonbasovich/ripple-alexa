@@ -1,0 +1,22 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:12.000
+A weekend plan changes: arrival moves to Saturday and one more guest is joining.
+
+00:00:12.000 --> 00:00:28.000
+Ripple checks this fictional plan through its real browser client and local MCP server.
+
+00:00:28.000 --> 00:00:54.000
+Seven changes are proposed. The restaurant cancellation shows its simulated $75 fee before approval.
+
+00:00:54.000 --> 00:01:16.000
+I approve only the reviewed operation. The server records consent, but nothing executes yet.
+
+00:01:16.000 --> 00:01:40.000
+Approval and execution are separate. I now execute that one approved change.
+
+00:01:40.000 --> 00:01:59.000
+The server reports six live commitments, a simulated $75 fee, and six open decisions.
+
+00:01:59.000 --> 00:02:15.000
+Fictional services and simulated fees only: no real booking, charge, Alexa runtime, or Alexa integration.
