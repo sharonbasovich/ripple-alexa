@@ -304,6 +304,8 @@ input:focus-visible { outline: 3px solid var(--accent-soft); }
 .mcp-tool-list li { border: 1px solid var(--line); background: #f8f4ed; border-radius: 6px; padding: 4px 8px; font-size: 0.85rem; }
 .mcp-state-head, .mcp-proposal-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .mcp-state-head p { margin: 4px 0 0; }
+.mcp-budget { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.mcp-budget-label, .mcp-budget-note { color: var(--ink-dim); font-size: 0.74rem; }
 .mcp-budget-ok, .mcp-budget-over { font-size: 1.1rem; white-space: nowrap; }
 .mcp-budget-ok { color: var(--ok); }
 .mcp-budget-over { color: var(--danger); }

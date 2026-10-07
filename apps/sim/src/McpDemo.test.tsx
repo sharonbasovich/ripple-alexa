@@ -126,6 +126,8 @@ describe('McpDemo connection lifecycle', () => {
     expect(container?.querySelector('.connection-badge')?.textContent).toBe('MCP connected');
     expect(uiText()).toContain('The MCP session remains connected');
     expect(uiText()).toContain('Tools returned by tools/list');
+    expect(uiText()).toContain('Projected plan, including pending proposals');
+    expect(uiText()).toContain('Not completed spend');
     expect(mcp.callBrowserMcpTool).toHaveBeenCalledTimes(1);
     expect(persistedLocalState()).toBe(localStateBefore);
   });

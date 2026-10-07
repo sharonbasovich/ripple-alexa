@@ -14,7 +14,7 @@ export default tseslint.config(
     rules: { ...reactHooks.configs.recommended.rules },
   },
   {
-    files: ['packages/**', 'apps/mcp-server/**'],
+    files: ['packages/**', 'apps/mcp-server/**', 'scripts/probe-mcp-readiness.mjs'],
     languageOptions: { globals: globals.node },
   },
   {
