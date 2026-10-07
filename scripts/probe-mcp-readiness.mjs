@@ -16,6 +16,13 @@ const request = {
 const controller = new AbortController();
 const timeout = setTimeout(() => controller.abort(), 5000);
 try {
+  const page = await fetch(new URL('/', endpoint), { signal: controller.signal });
+  if (!page.ok) throw new Error(`Simulator page returned HTTP ${page.status}`);
+  const html = await page.text();
+  if (!html.includes('<title>Ripple — simulated Alexa+ experience</title>')) {
+    throw new Error('Simulator page did not contain its expected title.');
+  }
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -49,7 +56,7 @@ try {
   if (message.id !== request.id || message.result?.protocolVersion !== request.params.protocolVersion || message.result?.serverInfo?.name !== 'ripple-sim-inspection') {
     throw new Error('MCP proxy returned an unexpected initialize response.');
   }
-  console.log(`MCP readiness verified via ${endpoint}: HTTP ${response.status}, protocol ${message.result.protocolVersion}, server ${message.result.serverInfo.name}.`);
+  console.log(`Readiness verified: simulator page served; MCP via ${endpoint}: HTTP ${response.status}, protocol ${message.result.protocolVersion}, server ${message.result.serverInfo.name}.`);
 } finally {
   clearTimeout(timeout);
 }
