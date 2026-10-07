@@ -71,9 +71,7 @@ jobs:
           startup_deadline=$((SECONDS + 60))
           mcp_services_ready=false
           while (( SECONDS < startup_deadline )); do
-            if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:5173/ \
-                | grep --fixed-strings --quiet '<title>Ripple - simulated Alexa+ experience</title>' \
-              && probe_mcp_proxy; then
+            if probe_mcp_proxy; then
               mcp_services_ready=true
               break
             fi
