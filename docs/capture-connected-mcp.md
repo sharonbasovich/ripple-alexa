@@ -22,7 +22,7 @@ invent or recreate screens to fit a narration line.
 
 ## Story and safety
 
-The two-minute story follows Maya's parents moving their Friday arrival to
+The 105.850-second story follows Maya's parents moving their Friday arrival to
 Saturday morning and the guest count changing from two to three. The browser
 connects to the self-hosted MCP server, shows seven proposed operations and an
 unchanged Sunday departure, confirms existing commitments are unchanged, then

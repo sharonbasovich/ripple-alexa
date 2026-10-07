@@ -137,7 +137,7 @@ try {
   assert.match(offlineLabel, /Simulated Alexa\+ experience.*fictional services/i);
   mark('offline_preview_disclosure_visible');
   await saveScreenshot('00-offline-preview-disclosure.png');
-  await holdUntil(8_000);
+  await holdUntil(6_000);
 
   await page.getByRole('button', { name: 'Connected MCP demo' }).click();
   mark('connected_mode_selected');
@@ -153,7 +153,7 @@ try {
   assert.match(initialFacts, /arrival 2026-10-16T18:05.*departure 2026-10-18T17:00.*2 guests/i);
   mark('browser_mcp_initialized_and_tools_listed', { tools: listedTools, initialFacts });
   await saveScreenshot('01-connected-init-and-tools.png');
-  await holdUntil(20_000);
+  await holdUntil(18_000);
 
   const commitments = page.locator('.mcp-commitments');
   await commitments.locator('summary').click();
@@ -161,7 +161,7 @@ try {
   assert.match(initialCommitments, /2026-10-18T17:00/, 'The visible baseline commitment parameters must retain the Sunday departure.');
   mark('baseline_commitments_inspected', { sundayDeparture: '2026-10-18T17:00' });
   await saveScreenshot('02-baseline-commitments-and-sunday-departure.png');
-  await holdUntil(28_000);
+  await holdUntil(24_000);
 
   await page.getByRole('button', { name: 'Propose Saturday arrival + one guest' }).click();
   mark('apply_change_requested');
@@ -185,13 +185,13 @@ try {
   });
   await page.locator('.mcp-state-panel').scrollIntoViewIfNeeded();
   await saveScreenshot('03-server-confirms-current-commitments-unchanged.png');
-  await holdUntil(40_000);
+  await holdUntil(36_000);
 
   await restaurant.scrollIntoViewIfNeeded();
   await restaurant.locator('h3').hover();
   mark('restaurant_cancellation_reviewed_before_consent', { fee: 75, operationId: '0f606a50', payloadHash: '942c42ac', factsVersion: 2 });
   await saveScreenshot('04-fee-before-approval.png');
-  await holdUntil(52_000);
+  await holdUntil(47_000);
 
   await restaurant.getByRole('button', { name: 'Approve this exact operation' }).click();
   mark('exact_operation_approval_requested', { operationId: '0f606a50', payloadHash: '942c42ac', factsVersion: 2 });
@@ -203,13 +203,13 @@ try {
   mark('approval_recorded_without_execution', { liveCommitments: 7, proposedDecisions: 6, approvedOperations: 1, sunkFees: 0 });
   await page.locator('.mcp-state-panel').scrollIntoViewIfNeeded();
   await saveScreenshot('05-approved-server-state-unchanged.png');
-  await holdUntil(60_000);
+  await holdUntil(53_000);
   const consentContext = restaurant.locator('details.mcp-consent-context');
   if (!(await consentContext.getAttribute('open'))) await consentContext.locator('summary').click();
   await restaurant.scrollIntoViewIfNeeded();
   await restaurant.locator('h3').hover();
   await saveScreenshot('06-approved-awaiting-separate-execution.png');
-  await holdUntil(66_000);
+  await holdUntil(58_000);
 
   await page.getByRole('button', { name: 'Execute 1 approved change on server' }).click();
   mark('execute_approved_requested_separately');
@@ -227,7 +227,7 @@ try {
   await restaurant.scrollIntoViewIfNeeded();
   await restaurant.locator('h3').hover();
   await saveScreenshot('07-one-executed-six-still-pending.png');
-  await holdUntil(80_000);
+  await holdUntil(70_000);
 
   const evidencePanel = page.locator('.mcp-evidence');
   await evidencePanel.scrollIntoViewIfNeeded();
@@ -239,7 +239,7 @@ try {
   }
   mark('real_browser_json_rpc_evidence_opened', { exchanges: 10, visibleRows: [0, 2, 4, 6, 8, 9] });
   await saveScreenshot('08-brief-json-rpc-proof.png');
-  await holdUntil(92_000);
+  await holdUntil(80_000);
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -291,7 +291,7 @@ try {
   await page.locator('.mcp-state-panel').scrollIntoViewIfNeeded();
   await page.locator('.mcp-state-panel h2').hover();
   await saveScreenshot('09-ending-on-server-outcome-and-budget-note.png');
-  await holdUntil(120_000);
+  await holdUntil(105_850);
 
   manifest = {
     name: 'Ripple connected MCP browser capture',
