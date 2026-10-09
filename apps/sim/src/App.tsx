@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as E from '@ripple/engine';
-import type { ChangeSet, FactEdit, Op, World } from '@ripple/engine';
+import type { ChangeSet, FactEdit, FactKey, Op, World } from '@ripple/engine';
 import type { SimState } from './state';
 import {
   seed,
@@ -60,7 +60,7 @@ function OfflinePreview() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [notice, setNotice] = useState<string>('');
   const [examples, setExamples] = useState<string[]>([]);
-  const [recall, setRecall] = useState<ReturnType<typeof E.recallByFact> | null>(null);
+  const [recallFact, setRecallFact] = useState<FactKey | null>(null);
   const [voice, setVoice] = useState(false);
   const [device, setDevice] = useState<'desktop' | 'phone'>('desktop');
   const [compact, setCompact] = useState(false);
@@ -68,6 +68,8 @@ function OfflinePreview() {
 
   const w = sim.world;
   const now = sim.now;
+  // Keep the selected question open, but always answer from the current world.
+  const recall = recallFact === null ? null : E.recallByFact(w, recallFact);
 
   useEffect(() => persist(sim), [sim]);
   useEffect(() => setVoiceEnabled(voice), [voice]);
@@ -145,7 +147,7 @@ function OfflinePreview() {
   const onUtter = (text: string) => {
     const i = runUtterance(w, text, now);
     if (i.type === 'edit') applyEdits(i.edits);
-    else if (i.type === 'recall') setRecall(E.recallByFact(w, i.fact));
+    else if (i.type === 'recall') setRecallFact(i.fact);
     else if (i.type === 'status') {
       setNotice(speakableSummary(w, now));
       speak(speakableSummary(w, now));
@@ -164,7 +166,7 @@ function OfflinePreview() {
     setSim(s);
     setResetSeq((n) => n + 1); // remount the editor — drop stale inputs
     setPreview(null);
-    setRecall(null);
+    setRecallFact(null);
     setNotice('Demo reset — only the synthetic local data was cleared.');
   };
 
@@ -381,7 +383,7 @@ function OfflinePreview() {
             <p className="muted">
               Unaffected: {recall.unaffected.map((c) => c.label).join(', ')}
             </p>
-            <button onClick={() => setRecall(null)}>Close</button>
+            <button onClick={() => setRecallFact(null)}>Close</button>
           </section>
         )}
 
