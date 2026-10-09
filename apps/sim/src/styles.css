@@ -256,6 +256,13 @@ input:focus-visible { outline: 3px solid var(--accent-soft); }
 .sim-buttons button { font-size: 0.82rem; }
 
 @media (max-width: 520px) {
+  /* At narrow widths, including native browser zoom, keep status messages
+     in the reading order so they cannot cover keyboard-focused controls. */
+  .notice {
+    position: static;
+    transform: none;
+    max-width: 100%;
+  }
   .hero h1 { font-size: 1.9rem; }
   .hero-controls { margin-left: 0; }
   .hero-flow { margin-left: 0; }
