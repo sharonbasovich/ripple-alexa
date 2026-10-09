@@ -183,6 +183,7 @@ export function createRippleMcpServer(w) {
           fact,
           ops: r.ops.map((o) => ({ id: o.id, kind: o.kind, commitmentId: o.commitmentId, status: o.status, changedBy: o.changedBy })),
           events: r.events.map((e) => ({ seq: e.seq, type: e.type })),
+            recall: E.recallByFact(w, fact, E.FIXTURE_NOW),
         },
       );
     },

@@ -27,6 +27,16 @@ async function editArrival(text = 'Move arrival to Saturday 9:40') {
   await click('Apply change');
 }
 
+async function setArrival(value: string) {
+  await act(async () => {
+    const input = container.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await click('Preview change');
+  await click('Apply change');
+}
+
 function familyOp() {
   const card = [...container.querySelectorAll('.op-card')].find((c) => c.textContent?.includes('Update: Family visit'));
   if (!card) throw new Error('Family visit operation missing');
@@ -44,20 +54,21 @@ function recallPanel() {
 function expectFreshRecall() {
   const saved = load();
   if (!saved) throw new Error('Persisted world missing');
-  const fresh = E.recallByFact(saved.world, 'arrival');
+  const fresh = E.recallByFact(saved.world, 'arrival', saved.now);
   const panel = recallPanel();
   const rows = [...panel.querySelectorAll('li')];
-  expect(rows).toHaveLength(fresh.changedCommitments.length || 1);
-  for (const [i, change] of fresh.changedCommitments.entries()) {
+  const operations = [...fresh.appliedHistory, ...fresh.pendingOperations];
+  expect(rows).toHaveLength(operations.length);
+  for (const [i, change] of operations.entries()) {
     expect(rows[i]?.textContent).toContain(`${change.label}:`);
-    for (const [key, value] of Object.entries(change.whatChanged)) {
+    for (const [key, value] of Object.entries(change.kind === 'update' ? change.patch : change.after ?? {})) {
       expect(rows[i]?.textContent).toContain(`${key} → ${fmtParamValue(value)}`);
     }
-    const status = { proposed: 'proposed, awaiting decision', approved: 'approved, awaiting apply', applied: 'applied' };
+    const status = { proposed: 'proposed, awaiting decision', approved: 'approved, awaiting apply', applied: 'applied earlier' };
     expect(rows[i]?.querySelector('em')?.textContent).toBe(`(${status[change.state]})`);
   }
-  if (!fresh.changedCommitments.length) expect(panel.textContent).toContain('Nothing was changed by that fact.');
-  expect(panel.querySelector('p')?.textContent).toBe(`Unaffected: ${fresh.unaffected.map((c) => c.label).join(', ')}`);
+  if (!operations.length) expect(panel.textContent).toContain('Nothing was changed by that fact.');
+  expect(panel.textContent).toContain(`Unaffected: ${fresh.unaffectedCommitments.map((c) => c.label).join(', ')}`);
   return fresh;
 }
 
@@ -74,6 +85,49 @@ afterEach(async () => {
 });
 
 describe('open offline causal recall', () => {
+  it('shows applied history and newer pending changes together through approval, execution and reload', async () => {
+    await editArrival();
+    await click('What changed because of the flight?');
+    await click('Approve', familyOp());
+    await click('Apply 1 approved change');
+    await setArrival('2026-10-17T10:40');
+    expectFreshRecall();
+    expect(recallPanel().querySelector('[aria-label="Applied history"]')?.textContent).toContain('Saturday 09:40');
+    expect(recallPanel().querySelector('[aria-label="Current pending changes"]')?.textContent).toContain('Saturday 10:40');
+    await click('Approve', familyOp());
+    expectFreshRecall();
+    expect(recallPanel().querySelector('[aria-label="Current pending changes"]')?.textContent).toContain('approved, awaiting apply');
+    await click('Apply 1 approved change');
+    const fresh = expectFreshRecall();
+    expect(fresh.appliedHistory.filter(o => o.commitmentId === 'calendar:visit')).toHaveLength(2);
+    expect(recallPanel().querySelector('[aria-label="Current pending changes"]')?.textContent ?? '').not.toContain('Family visit');
+    await click('Close', recallPanel());
+    await act(async () => root.unmount());
+    await mount();
+    await click('What changed because of the flight?');
+    expectFreshRecall();
+    expect(recallPanel().querySelector('[aria-label="Applied history"]')?.textContent).toContain('Saturday 10:40');
+  });
+
+  it.each(['decline', 'expiry', 'supersession'] as const)('retains applied history after pending %s', async how => {
+    await editArrival();
+    await click('Approve', familyOp());
+    await click('Apply 1 approved change');
+    await click('What changed because of the flight?');
+    await setArrival('2026-10-17T10:40');
+    if (how === 'decline') await click('Decline', familyOp());
+    else if (how === 'expiry') { await click('+6h'); await click('+6h'); }
+    else await setArrival('2026-10-17T09:40');
+    expectFreshRecall();
+    expect(recallPanel().querySelector('[aria-label="Applied history"]')?.textContent).toContain('Saturday 09:40');
+    expect(recallPanel().querySelector('[aria-label="Current pending changes"]')?.textContent ?? '').not.toContain('Family visit');
+    if (how === 'expiry') {
+      await click('Re-check for open decisions (re-proposes against current facts)');
+      expectFreshRecall();
+      expect(recallPanel().querySelector('[aria-label="Current pending changes"]')?.textContent).toContain('Saturday 10:40');
+    }
+  });
+
   it('tracks proposed, approved and executed changes without another question', async () => {
     await editArrival();
     await click('What changed because of the flight?');
@@ -86,7 +140,7 @@ describe('open offline causal recall', () => {
 
     await click('Apply 1 approved change');
     expectFreshRecall();
-    expect(recallPanel().textContent).toContain('Family visit: start → Saturday 09:40 (applied)');
+    expect(recallPanel().textContent).toContain('Family visit: start → Saturday 09:40 (applied earlier)');
     expect(container.querySelector('[aria-label="Calendar"]')?.textContent).toContain('Saturday 09:40');
   });
 

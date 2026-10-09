@@ -69,7 +69,7 @@ function OfflinePreview() {
   const w = sim.world;
   const now = sim.now;
   // Keep the selected question open, but always answer from the current world.
-  const recall = recallFact === null ? null : E.recallByFact(w, recallFact);
+  const recall = recallFact === null ? null : E.recallByFact(w, recallFact, now);
 
   useEffect(() => persist(sim), [sim]);
   useEffect(() => setVoiceEnabled(voice), [voice]);
@@ -363,25 +363,28 @@ function OfflinePreview() {
         {recall && (
           <section className="recall" aria-label="Causal recall">
             <h3>What changed because of {recall.fact}?</h3>
-            <ul>
-              {recall.changedCommitments.map((c) => (
-                <li key={c.id}>
-                  {c.label}: {describePatch(c.whatChanged)}{' '}
-                  <em className="muted">
-                    ({c.state === 'applied'
-                      ? 'applied'
-                      : c.state === 'approved'
-                        ? 'approved, awaiting apply'
-                        : 'proposed, awaiting decision'})
-                  </em>
-                </li>
-              ))}
-              {recall.changedCommitments.length === 0 && (
-                <li className="muted">Nothing was changed by that fact.</li>
-              )}
-            </ul>
+            {recall.appliedHistory.length > 0 && <>
+              <h4>Applied history</h4>
+              <ul aria-label="Applied history">
+                {recall.appliedHistory.map(o => <li key={o.id}>
+                  {o.label}: {describeRecallOperation(o)} <em className="muted">(applied earlier)</em>
+                </li>)}
+              </ul>
+            </>}
+            {recall.pendingOperations.length > 0 && <>
+              <h4>Current pending changes</h4>
+              <ul aria-label="Current pending changes">
+                {recall.pendingOperations.map(o => <li key={o.id}>
+                  {o.label}: {describeRecallOperation(o)}{' '}
+                  <em className="muted">({o.state === 'approved'
+                    ? 'approved, awaiting apply' : 'proposed, awaiting decision'})</em>
+                </li>)}
+              </ul>
+            </>}
+            {recall.appliedHistory.length === 0 && recall.pendingOperations.length === 0 &&
+              <p className="muted">Nothing was changed by that fact.</p>}
             <p className="muted">
-              Unaffected: {recall.unaffected.map((c) => c.label).join(', ')}
+              Unaffected: {recall.unaffectedCommitments.map((c) => c.label).join(', ')}
             </p>
             <button onClick={() => setRecallFact(null)}>Close</button>
           </section>
@@ -412,6 +415,12 @@ function affectedIds(w: World): Set<string> {
   const cs = w.changeSets[w.changeSets.length - 1];
   if (!cs) return new Set();
   return new Set(cs.ops.filter((o) => o.status === 'proposed' || o.status === 'approved').map((o) => o.commitmentId));
+}
+
+function describeRecallOperation(o: E.RecallOperation): string {
+  if (o.kind === 'cancel') return 'cancel booking';
+  if (o.kind === 'create' || o.kind === 'alternative') return `book: ${describePatch(o.after ?? {})}`;
+  return describePatch(o.patch);
 }
 
 function describePatch(patch: Record<string, unknown>): string {

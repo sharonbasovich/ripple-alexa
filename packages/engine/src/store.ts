@@ -5,6 +5,7 @@
 
 import type {
   BudgetStatus,
+  CausalRecall,
   ChangeSet,
   Commitment,
   ExecutionOutcome,
@@ -14,6 +15,7 @@ import type {
   LedgerEvent,
   Op,
   Receipt,
+  RecallOperation,
   VisitFacts,
   World,
 } from './types.js';
@@ -933,20 +935,42 @@ export function receiptsForFact(w: World, fact: FactKey): Receipt {
   return { fact, factsVersion: w.factsVersion, ops, events };
 }
 
-/** Causal recall: "what changed because of the flight/arrival?" answered
- *  strictly from the ledger — a fact only counts as the cause when a
- *  facts.changed event for it exists at the op's facts version. Ops that are
- *  approved but not yet executed are reported as pending, never as changed. */
-export function recallByFact(w: World, fact: FactKey): {
-  fact: FactKey;
-  changedCommitments: {
-    id: string;
-    label: string;
-    whatChanged: Record<string, JsonValue>;
-    state: 'applied' | 'approved' | 'proposed';
-  }[];
-  unaffected: { id: string; label: string }[];
-} {
+/** Pure causal read. Successful history follows execution ledger sequence;
+ * current decisions use the supplied simulated clock (default: last input).
+ * Legacy commitment summaries remain available for response compatibility. */
+export function recallByFact(
+  w: World,
+  fact: FactKey,
+  now: number = w.journal[w.journal.length - 1]?.t ?? 0,
+): CausalRecall {
+  const causedBy = (o: Op) => o.changedBy !== undefined
+    ? o.changedBy.includes(fact)
+    : (w.commitments[o.commitmentId]?.dependsOn ?? o.dependsOn ?? []).includes(fact);
+  const operation = (o: Op, factsVersion: number): RecallOperation => clone({
+    id: o.id, commitmentId: o.commitmentId, label: o.label, kind: o.kind,
+    factsVersion, changedBy: o.changedBy ?? w.commitments[o.commitmentId]?.dependsOn ?? o.dependsOn ?? [],
+    before: o.before, after: o.after, patch: o.patch,
+  });
+  const ops = new Map(w.changeSets.flatMap(cs => cs.ops.map(o => [o.id, { o, cs }] as const)));
+  const appliedHistory: CausalRecall['appliedHistory'] = [];
+  for (const event of [...w.ledger].sort((a, b) => a.seq - b.seq)) {
+    if (event.type !== 'op.executed' || !event.opId) continue;
+    const entry = ops.get(event.opId);
+    if (!entry || entry.o.status !== 'executed' || !causedBy(entry.o)) continue;
+    appliedHistory.push({ ...operation(entry.o, entry.cs.factsVersion), state: 'applied',
+      executedSeq: event.seq, executedAt: event.t });
+  }
+  const latest = w.changeSets[w.changeSets.length - 1];
+  const pendingOperations: CausalRecall['pendingOperations'] = [];
+  if (latest && latest.factsVersion === w.factsVersion &&
+      latest.status !== 'superseded' && latest.status !== 'expired') {
+    for (const o of latest.ops) {
+      const state = effectiveOpStatus(latest, o, now);
+      if (causedBy(o) && (state === 'approved' || state === 'proposed')) {
+        pendingOperations.push({ ...operation(o, latest.factsVersion), state });
+      }
+    }
+  }
   const touched = new Map<
     string,
     { patch: Record<string, JsonValue>; state: 'applied' | 'approved' | 'proposed' }
@@ -990,7 +1014,11 @@ export function recallByFact(w: World, fact: FactKey): {
   const unaffected = Object.values(w.commitments)
     .filter((c) => c.state !== 'cancelled' && !touched.has(c.id))
     .map((c) => ({ id: c.id, label: c.label }));
-  return { fact, changedCommitments, unaffected };
+  const recalled = new Set([...appliedHistory, ...pendingOperations].map(o => o.commitmentId));
+  const unaffectedCommitments = Object.values(w.commitments)
+    .filter(c => c.state !== 'cancelled' && !recalled.has(c.id))
+    .map(c => ({ id: c.id, label: c.label }));
+  return { fact, changedCommitments, unaffected, appliedHistory, pendingOperations, unaffectedCommitments };
 }
 
 // --------------------------------------------------------- persistence
