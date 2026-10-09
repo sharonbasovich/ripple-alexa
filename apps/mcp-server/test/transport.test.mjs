@@ -130,4 +130,41 @@ describe('MCP inspection wrapper over HTTP', () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it('adds truthful recall without changing receipt fields, matching direct engine reads across transitions', async () => {
+    Object.assign(world, E.createWorld(E.FIXTURE_FACTS, E.PLAN_CREATED_AT));
+    E.advanceTime(world, E.FIXTURE_NOW);
+    async function receipt() {
+      const before = E.serializeWorld(world);
+      const s = (await call('get_receipt', { fact: 'arrival' })).structuredContent;
+      expect(s.recall).toEqual(E.recallByFact(world, 'arrival', E.FIXTURE_NOW));
+      expect(s.ops).toEqual(E.receiptsForFact(world, 'arrival').ops.map(o => ({
+        id: o.id, kind: o.kind, commitmentId: o.commitmentId, status: o.status, changedBy: o.changedBy,
+      })));
+      expect(s.events).toEqual(E.receiptsForFact(world, 'arrival').events.map(e => ({ seq: e.seq, type: e.type })));
+      expect(E.serializeWorld(world)).toBe(before);
+      return s.recall;
+    }
+    async function propose(value) {
+      const res = await call('apply_change', { edits: [{ key: 'arrival', value }] });
+      return res.structuredContent.ops.find(o => o.commitmentId === 'calendar:visit');
+    }
+    const first = await propose('2026-10-17T09:40');
+    await call('confirm_ops', { opIds: [first.id] });
+    await call('execute_approved');
+    const next = await propose('2026-10-17T10:40');
+    let r = await receipt();
+    expect(r.appliedHistory.some(o => o.id === first.id)).toBe(true);
+    expect(r.pendingOperations.find(o => o.id === next.id).state).toBe('proposed');
+    await call('confirm_ops', { opIds: [next.id] });
+    r = await receipt();
+    expect(r.pendingOperations.find(o => o.id === next.id).state).toBe('approved');
+    await call('execute_approved');
+    r = await receipt();
+    expect(r.appliedHistory.filter(o => o.commitmentId === 'calendar:visit')).toHaveLength(2);
+    expect(r.pendingOperations.some(o => o.id === next.id)).toBe(false);
+    const declined = await propose('2026-10-17T11:40');
+    await call('decline_ops', { opIds: [declined.id] });
+    expect((await receipt()).pendingOperations.some(o => o.id === declined.id)).toBe(false);
+  });
 });

@@ -249,6 +249,36 @@ export interface Receipt {
   events: LedgerEvent[];
 }
 
+/** One causal operation, never combined with another operation's patch. */
+export interface RecallOperation {
+  id: string;
+  commitmentId: string;
+  label: string;
+  kind: OpKind;
+  factsVersion: number;
+  changedBy: FactKey[];
+  before: Record<string, JsonValue> | null;
+  after: Record<string, JsonValue> | null;
+  patch: Record<string, JsonValue>;
+}
+
+export interface CausalRecall {
+  fact: FactKey;
+  /** Legacy commitment summary retained for existing callers. New consumers
+   * should use appliedHistory and pendingOperations to avoid hiding proposals. */
+  changedCommitments: {
+    id: string;
+    label: string;
+    whatChanged: Record<string, JsonValue>;
+    state: 'applied' | 'approved' | 'proposed';
+  }[];
+  unaffected: { id: string; label: string }[];
+  appliedHistory: (RecallOperation & { state: 'applied'; executedSeq: number; executedAt: number })[];
+  pendingOperations: (RecallOperation & { state: 'approved' | 'proposed' })[];
+  /** Live commitments absent from both truthful operation lists. */
+  unaffectedCommitments: { id: string; label: string }[];
+}
+
 export interface FactEdit {
   key: FactKey;
   value: JsonValue;

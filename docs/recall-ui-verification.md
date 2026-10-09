@@ -42,6 +42,10 @@ Actual browser screenshot after execution and persisted reload:
 
 ## Separate existing engine limit
 
+The follow-up [operation-level recall contract](recall-contract.md) addresses
+this reproduction through additive history and pending fields. The legacy
+commitment summary described below is retained for caller compatibility.
+
 Execute the Family visit arrival change to `2026-10-17T09:40`, then edit arrival
 to `2026-10-17T10:40` without executing the new proposal. The newest calendar
 operation is proposed with `start: 2026-10-17T10:40`, but a fresh
