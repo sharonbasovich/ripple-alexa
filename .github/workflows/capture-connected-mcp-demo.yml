@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 12
     env:
       CAPTURE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-      CAPTURE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/ripple-capture-tools/node_modules/playwright/index.mjs
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,6 +89,7 @@ jobs:
           cat artifacts/mcp-capture/mcp-readiness-probe.log
 
           CAPTURE_DIR="$PWD/artifacts/mcp-capture" \
+            CAPTURE_PLAYWRIGHT_MODULE="$RUNNER_TEMP/ripple-capture-tools/node_modules/playwright/index.mjs" \
             CAPTURE_COMMIT="$CAPTURE_COMMIT" \
             VITE_GIT_COMMIT="$CAPTURE_COMMIT" \
             node scripts/capture-connected-mcp-demo.mjs
