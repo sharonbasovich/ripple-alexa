@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 12
     env:
       CAPTURE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      CAPTURE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/ripple-capture-tools/node_modules/playwright/index.mjs
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,8 +36,10 @@ jobs:
       - name: Install project and pinned capture browser
         run: |
           npm ci
-          npm install --no-save --package-lock=false playwright@1.63.0
-          npx playwright install --with-deps chromium
+          # Keep the capture-only dependency outside npm's workspace graph.
+          # Ad-hoc root installation can fail in npm Arborist after npm ci.
+          npm install --prefix "$RUNNER_TEMP/ripple-capture-tools" --ignore-scripts --no-save --package-lock=false --workspaces=false playwright@1.63.0
+          "$RUNNER_TEMP/ripple-capture-tools/node_modules/.bin/playwright" install --with-deps chromium
 
       - name: Build the app and deterministic engine
         run: npm run build
