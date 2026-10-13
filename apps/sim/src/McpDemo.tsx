@@ -72,10 +72,11 @@ const TESTED_COMMIT = (import.meta.env as ImportMetaEnv & { VITE_GIT_COMMIT?: st
 export interface McpDemoProps {
   endpoint?: URL;
   allowConnect?: boolean;
+  onTryOffline?: () => void;
 }
 
 export function McpDemo(props: McpDemoProps = {}) {
-  const { endpoint, allowConnect = import.meta.env.DEV } = props;
+  const { endpoint, allowConnect = import.meta.env.DEV, onTryOffline } = props;
   const [session, setSession] = useState<BrowserMcpSession | null>(null);
   const [tools, setTools] = useState<string[]>([]);
   const [status, setStatus] = useState<McpStatus | null>(null);
@@ -279,7 +280,7 @@ export function McpDemo(props: McpDemoProps = {}) {
           Browser MCP client · Streamable HTTP · synthetic plan only · loopback server
         </div>
         <div>
-          <h1>Ripple MCP session</h1>
+          <h1>{allowConnect ? 'Ripple MCP session' : 'Local MCP setup'}</h1>
           <p className="tagline">
             The browser SDK initializes the server, lists its tools and calls them over HTTP.
             Decisions are reviewed against the exact returned operation before consent.
@@ -307,8 +308,15 @@ export function McpDemo(props: McpDemoProps = {}) {
             ) : (
               <button onClick={disconnect} disabled={busy}>Disconnect</button>
             )}
-            {!import.meta.env.DEV && (
-              <p className="mcp-hint">The static build stays offline. Run <code>npm run dev</code> to use its local MCP proxy.</p>
+            {!allowConnect && (
+              <div className="mcp-hint">
+                <p>Try the interactive plan here in Offline preview. This connected path needs the local MCP server and development proxy.</p>
+                {onTryOffline && <button className="primary" onClick={onTryOffline}>Try offline preview</button>}
+                <details>
+                  <summary>Run the connected demo locally</summary>
+                  <p>Start <code>npm run mcp</code> and <code>npm run dev</code> in separate terminals, then open <code>http://127.0.0.1:5173</code>.</p>
+                </details>
+              </div>
             )}
             {connected && (
               <button onClick={resetServer} disabled={busy}>Reset server to sample plan</button>

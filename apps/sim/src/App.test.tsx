@@ -16,6 +16,20 @@ async function mount() {
   await act(async () => root.render(createElement(App)));
 }
 
+it('routes static MCP setup back to the working preview without resetting a plan', async () => {
+  await act(async () => root.render(createElement(App, { allowMcpConnect: false })));
+  await editArrival();
+  const saved = localStorage.getItem('ripple:v1');
+  await click('Local MCP setup');
+  expect(container.querySelector<HTMLButtonElement>('.mcp-actions button')?.disabled).toBe(true);
+  expect(container.textContent).toContain('Try the interactive plan here');
+  await click('Try offline preview');
+  expect(document.activeElement).toBe(container.querySelector('.demo-mode-switch button'));
+  expect(container.querySelector('[aria-label="Visit plan"]')).not.toBeNull();
+  expect(localStorage.getItem('ripple:v1')).toBe(saved);
+  expect(container.textContent).toContain('Saturday 09:40');
+});
+
 async function click(label: string, scope: ParentNode = container) {
   const button = [...scope.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(label));
   if (!button || button.disabled) throw new Error(`Missing enabled button: ${label}`);
