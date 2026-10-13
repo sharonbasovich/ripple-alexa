@@ -2,8 +2,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const { chromium } = await import(process.env.CAPTURE_PLAYWRIGHT_MODULE
+  ? pathToFileURL(process.env.CAPTURE_PLAYWRIGHT_MODULE).href
+  : 'playwright');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputDir = path.resolve(process.env.CAPTURE_DIR ?? path.join(repoRoot, 'artifacts/mcp-capture'));

@@ -31,12 +31,16 @@ export function load(): SimState | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { now?: number; world?: string };
-    if (typeof parsed.now !== 'number' || typeof parsed.world !== 'string') {
+    if (typeof parsed.now !== 'number' || !Number.isSafeInteger(parsed.now) ||
+        Math.abs(parsed.now) > 8.64e15 || typeof parsed.world !== 'string') {
       snapshotDiscarded = true;
       return null;
     }
     const world = E.deserializeWorld(parsed.world);
-    if (!world) {
+    // Every UI clock change is journalled with its lifecycle transitions.
+    // Loading a different envelope clock would rewind consent or skip those
+    // transitions. Reject the pair rather than inventing missing history.
+    if (!world || world.journal.at(-1)?.t !== parsed.now) {
       snapshotDiscarded = true;
       return null;
     }
