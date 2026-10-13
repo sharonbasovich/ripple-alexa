@@ -1,5 +1,13 @@
 # Devpost draft — Ripple
 
+> Historical draft retained below. As of the 2026-10-13 audit, the runnable
+> browser MCP client and local Streamable HTTP setup are documented in
+> [README.md](../README.md); actual recorded exchanges are preserved in
+> [mcp-browser-proof.md](mcp-browser-proof.md). The inspector-only description,
+> 88-test count and 1:49 offline-video reference below describe an earlier
+> revision. The static Pages app remains an offline simulation. These local
+> MCP traces do not establish a deployed Alexa integration or human outcomes.
+
 ## Tagline
 
 Change one thing. Alexa fixes everything that depended on it — and only that.

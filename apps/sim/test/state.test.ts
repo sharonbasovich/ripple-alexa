@@ -59,6 +59,18 @@ describe('persistence', () => {
     clearPersisted();
     expect(load()).toBeNull();
   });
+
+  it.each([1e100, -1, 0, 1.5])('rejects an invalid or inconsistent saved clock %s', (now) => {
+    const s = seed();
+    store.set('ripple:v1', JSON.stringify({ now, world: E.serializeWorld(s.world) }));
+    expect(load()).toBeNull();
+  });
+
+  it('rejects a clock ahead of the journal instead of skipping lifecycle transitions', () => {
+    const s = seed();
+    store.set('ripple:v1', JSON.stringify({ now: s.now + 24 * 60 * 60_000, world: E.serializeWorld(s.world) }));
+    expect(load()).toBeNull();
+  });
 });
 
 describe('previewEdits', () => {
