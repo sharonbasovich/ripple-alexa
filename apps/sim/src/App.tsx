@@ -32,10 +32,12 @@ const CHIPS = [
 
 export default function App({ allowMcpConnect = import.meta.env.DEV }: { allowMcpConnect?: boolean }) {
   const [mode, setMode] = useState<'offline' | 'mcp'>('offline');
+  const offlineButton = useRef<HTMLButtonElement>(null);
   return (
     <>
       <nav className="demo-mode-switch" aria-label="Demo mode">
         <button
+          ref={offlineButton}
           aria-pressed={mode === 'offline'}
           className={mode === 'offline' ? 'selected' : ''}
           onClick={() => setMode('offline')}
@@ -51,7 +53,10 @@ export default function App({ allowMcpConnect = import.meta.env.DEV }: { allowMc
         </button>
       </nav>
       {mode === 'mcp'
-        ? <McpDemo allowConnect={allowMcpConnect} onTryOffline={() => setMode('offline')} />
+        ? <McpDemo allowConnect={allowMcpConnect} onTryOffline={() => {
+            setMode('offline');
+            offlineButton.current?.focus();
+          }} />
         : <OfflinePreview />}
     </>
   );
