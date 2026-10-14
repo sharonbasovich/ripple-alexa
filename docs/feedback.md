@@ -61,8 +61,8 @@ entrants validate designs against something real.
 
 ### Vitest (5.0.3)
 
-- **Used for**: all 88 tests — engine unit/integration, a 1,200-sequence
-  property suite, sim state tests, and the MCP transport tests.
+- **Used for**: all 117 tests — 77 engine tests (including the 1,200-sequence
+  property suite), 28 sim state/DOM tests, and 12 MCP transport/client tests.
 - **Worked well**: fast, deterministic, same config pattern in every workspace
   package; the property suite caught two real engine bugs (lazy-expiry ledger
   mutation, op `before` aliasing) before review did.
@@ -73,8 +73,10 @@ entrants validate designs against something real.
 
 ### @modelcontextprotocol/sdk (1.31.0)
 
-- **Used for**: `apps/mcp-server` — a localhost-only MCP inspection wrapper
-  exposing the *same* engine over Streamable HTTP.
+- **Used for**: `apps/mcp-server` and the browser client in `apps/sim` — a
+  localhost-only connected MCP demo exposing the *same* engine over Streamable
+  HTTP, with proposals, exact payload-hash/facts-revision approval, and separate
+  execution.
 - **Worked well**: `registerTool` + zod input schemas produce well-formed tool
   definitions with almost no boilerplate, and the stateless
   per-request-server pattern works exactly as documented in the examples.
@@ -84,8 +86,7 @@ entrants validate designs against something real.
   stateless-mode guidance in the main docs would help.
 - **Onboarding**: moderate — good examples exist, but the right pattern lives
   in the repo's example servers rather than the quickstart.
-- **Use again?** Yes — it made the engine inspectable over real MCP transport
-  with ~150 lines.
+- **Use again?** Yes — it made the engine inspectable over real MCP transport.
 
 ### axe-core (4.13.0, vendored dev tool)
 
@@ -147,6 +148,9 @@ entrants validate designs against something real.
 - The app is a **simulation**: official Alexa+ preview tooling is unavailable
   to hackathon entrants (per the contest FAQ), and no claim of Alexa+
   integration is made anywhere.
+- The public GitHub Pages app is an offline preview. The separate local
+  connected MCP demo uses real SDK Streamable HTTP transport with synthetic
+  data; neither mode makes real transactions or runs an Alexa+ runtime.
 - `localStorage` persistence is single-tab and device-local; no cross-tab or
   cross-device sync is implemented or claimed.
 - The intent grammar is deliberately bounded — unsupported phrasing returns
