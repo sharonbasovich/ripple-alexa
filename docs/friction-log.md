@@ -48,10 +48,11 @@ demo doesn't overclaim — none of these are tool or Amazon failures.
 
 ## Remaining limits (stated, not hidden)
 
-- Deterministic simulation only — no real Alexa runtime, no network calls,
-  no outbound actions. Official preview tooling is not available to
-  entrants (see item 1), so simulation-fidelity claims stop at "models
-  documented behaviors".
+- Deterministic simulation only — no real Alexa runtime or real transactions.
+  The public offline preview sends no MCP network requests; the separate local
+  Connected MCP demo uses localhost Streamable HTTP with simulated services.
+  Official preview tooling is not available to entrants (see item 1), so
+  simulation-fidelity claims stop at "models documented behaviors".
 - State is device-local `localStorage`, single browser tab; no concurrency.
 - Simulated wall-clock is UTC-labelled; no DST modeling (fixture avoids it).
 - Intent parser is deliberately bounded — clarify/unknown for anything
