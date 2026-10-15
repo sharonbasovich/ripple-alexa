@@ -540,7 +540,7 @@ function PreviewModal({
           <p key={n} className="note">{n}</p>
         ))}
         <div className="modal-actions">
-          {preview.recovery && <button className="primary" onClick={() => onCorrect(preview.recovery!.edits)}>
+          {preview.recovery && <button className="primary recovery" onClick={() => onCorrect(preview.recovery!.edits)}>
             {preview.recovery.label}
           </button>}
           <button className="primary" onClick={onApply} disabled={preview.errors.length > 0}>
