@@ -375,3 +375,70 @@ describe('regression: nested persistence validation', () => {
     expect(E.deserializeWorld(JSON.stringify(s))).toBeNull();
   });
 });
+
+describe('regression: exact-date arrival recovery preserves weekday meaning', () => {
+  function saturdayFacts() {
+    return { ...E.FIXTURE_FACTS, arrival: '2026-10-17T09:40' };
+  }
+
+  it('keeps the forward Friday interpretation but permits an exact previous-Friday correction', () => {
+    const facts = saturdayFacts();
+    const original = { ...facts };
+    const weekday = E.parseUtterance('Arrive Friday 18:05', facts, NOW);
+    expect(weekday.type).toBe('edit');
+    if (weekday.type !== 'edit') throw new Error('Expected weekday edit');
+    expect(weekday.edits).toEqual([{ key: 'arrival', value: '2026-10-23T18:05' }]);
+    expect(E.validateEdits(facts, weekday.edits).ok).toBe(false);
+    const exact = E.parseUtterance('Arrive 2026-10-16 18:05', facts, NOW);
+    expect(exact.type).toBe('edit');
+    if (exact.type !== 'edit') throw new Error('Expected exact-date edit');
+    expect(exact.edits).toEqual([{ key: 'arrival', value: '2026-10-16T18:05' }]);
+    expect(E.validateEdits(facts, exact.edits).ok).toBe(true);
+    expect(facts).toEqual(original);
+  });
+
+  it('supports deliberate forward-week compound dates without moving an unmentioned departure', () => {
+    const facts = saturdayFacts();
+    const intent = E.parseUtterance('Arrive 2026-10-23 18:05 and leave 2026-10-25 17:00', facts, NOW);
+    expect(intent.type).toBe('edit');
+    if (intent.type !== 'edit') throw new Error('Expected compound edit');
+    expect(intent.edits).toEqual([
+      { key: 'arrival', value: '2026-10-23T18:05' },
+      { key: 'departure', value: '2026-10-25T17:00' },
+    ]);
+    expect(E.validateEdits(facts, intent.edits).ok).toBe(true);
+    const weekday = E.parseUtterance('arrive Friday 18:05 and leave Monday 8am', facts, NOW);
+    expect(weekday.type).toBe('edit');
+    if (weekday.type !== 'edit') throw new Error('Expected weekday edit');
+    expect(weekday.edits).toEqual([
+      { key: 'arrival', value: '2026-10-23T18:05' },
+      { key: 'departure', value: '2026-10-19T08:00' },
+    ]);
+    expect(E.validateEdits(facts, weekday.edits).ok).toBe(false);
+  });
+
+  it.each([
+    'Arrive 2026-10-16T18:05',
+    'Move arrival to 2026-10-16 18:05',
+    'Arrive 2026-10-16 18:05 and 3 guests and budget $250',
+    'Departure 2026-10-25 17:00',
+  ])('accepts complete explicit dates: %s', (text) => {
+    expect(E.parseUtterance(text, saturdayFacts(), NOW).type).toBe('edit');
+  });
+
+  it.each([
+    'Arrive 2026-02-30 18:05',
+    'Arrive 2026-10-16 24:00',
+    'Arrive 2026-10-16 18:05:30',
+    'Arrive 2026-10-16T18:05Z',
+    'Arrive 2026-10-16 18:05 if it rains',
+    'Do not arrive 2026-10-16 18:05',
+    'Arrive 2026-10-16 18:05 and -2 guests',
+    'Arrive 2026-10-16 18:05 and 2.5 guests',
+    'Arrive 2026-10-16 18:05 and budget $250.50',
+    'Arrive 2026-10-16 18:05 and arrive Saturday 9:40',
+    'Arrive next Friday 18:05',
+  ])('does not partially apply ambiguous or malformed commands: %s', (text) => {
+    expect(E.parseUtterance(text, saturdayFacts(), NOW).type).not.toBe('edit');
+  });
+});
