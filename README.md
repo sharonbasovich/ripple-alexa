@@ -121,6 +121,10 @@ Single-tab only: cross-tab synchronization is not implemented or claimed.
   Alexa+ integration, and claims none.
 - The intent parser is deliberately bounded; unknown text returns examples and
   changes nothing. The fact editor covers arbitrary supported edits.
+- Weekday commands retain their next-occurrence meaning. For a specific week, use
+  `Arrive 2026-10-16 18:05` or `Departure 2026-10-25 17:00`. Invalid trip previews
+  show the interpreted dates; any suggested correction opens a fresh preview and
+  still needs **Apply change**.
 - Fixture policies (8 h grocery dispatch cutoff, $25/seat <24 h restaurant fee,
   same-day-only restaurant edits) are fictional demo data.
 - State is device-local `localStorage`; one browser tab at a time.
