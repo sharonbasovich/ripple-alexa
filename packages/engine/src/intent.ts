@@ -17,6 +17,7 @@ export type Intent =
 export const EXAMPLE_UTTERANCES = [
   'Move arrival to Saturday 9:40',
   'Arrive Friday 18:05',
+  'Arrive 2026-10-16 18:05',
   'My brother is joining',
   'One more guest',
   '3 guests',
@@ -98,9 +99,21 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
     };
   }
 
+  // Explicit dates remove weekday ambiguity without changing the established
+  // next-occurrence weekday grammar. Mask only validated date commands before
+  // checking negative/decimal numeric facts: ISO date hyphens are not negatives.
+  const dated = exactDateEdits(text);
+  if (dated.invalid) {
+    return {
+      type: 'clarify',
+      message: 'Use a valid date and 24-hour time, such as Arrive 2026-10-16 18:05. Nothing was changed.',
+      examples: EXAMPLE_UTTERANCES,
+    };
+  }
+
   // Malformed numbers must never partial-parse into a plausible edit:
   // "2.5 guests" is not 2 and not 5; "-2 guests" is not 2.
-  if (/\d+\.\d+|-\s*\d/.test(text) && EDIT_SHAPED.test(text)) {
+  if (/\d+\.\d+|-\s*\d/.test(maskCovered(text, dated.covered).text) && EDIT_SHAPED.test(text)) {
     return {
       type: 'clarify',
       message:
@@ -129,12 +142,13 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
   // left over is scanned for edit-shaped tokens: if the command still has
   // unparsed meaning we clarify rather than silently applying a partial
   // parse ("3 guests and budget $250" must apply both or neither).
-  const covered: [number, number][] = [];
-  const edits: FactEdit[] = [];
+  const covered = dated.covered;
+  const edits = dated.edits;
 
-  const arrival = tryArrivalEdit(text, facts, covered);
+  const remaining = maskCovered(text, covered).text;
+  const arrival = tryArrivalEdit(remaining, facts, covered);
   if (arrival) edits.push(arrival);
-  const departure = tryDepartureEdit(text, facts, covered);
+  const departure = tryDepartureEdit(remaining, facts, covered);
   if (departure) edits.push(departure);
 
   const masked = maskCovered(text, covered);
@@ -179,7 +193,8 @@ export function parseUtterance(raw: string, facts: VisitFacts, _now: number): In
   const leftover = rest
     .split(/[^a-z0-9$]+/i)
     .filter((t) => t.length > 0);
-  if (edits.length > 0 && leftover.some((t) => !CONNECTORS.has(t.toLowerCase()))) {
+  if (edits.length > 0 && (leftover.some((t) => !CONNECTORS.has(t.toLowerCase())) ||
+      new Set(edits.map((edit) => edit.key)).size !== edits.length)) {
     return {
       type: 'clarify',
       message:
@@ -216,6 +231,28 @@ interface Masked {
   text: string;
   /** Map an index in the masked string back to the original. */
   map: (i: number) => number;
+}
+
+function exactDateEdits(text: string): {
+  edits: FactEdit[];
+  covered: [number, number][];
+  invalid: boolean;
+} {
+  const edits: FactEdit[] = [];
+  const covered: [number, number][] = [];
+  const prefixes = {
+    arrival: '(?:(?:move|change|set|push)\\s+)?(?:the\\s+)?(?:arriv(?:e|al|ing)|land(?:s|ing)?)\\s+(?:(?:to|on)\\s+)?',
+    departure: '(?:depart(?:ure|ing)?|leav(?:e|ing))\\s+(?:on\\s+)?',
+  };
+  for (const key of ['arrival', 'departure'] as const) {
+    const match = new RegExp(`\\b${prefixes[key]}(\\d{4}-\\d{2}-\\d{2})(?:t|\\s+)(\\d{2}:\\d{2})`).exec(text);
+    if (!match) continue;
+    const value = `${match[1]}T${match[2]}`;
+    if (parseLocal(value) === null) return { edits: [], covered: [], invalid: true };
+    edits.push({ key, value });
+    covered.push([match.index, match.index + match[0].length]);
+  }
+  return { edits, covered, invalid: false };
 }
 
 function maskCovered(text: string, covered: [number, number][]): Masked {
