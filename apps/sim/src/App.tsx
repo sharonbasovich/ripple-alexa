@@ -101,7 +101,7 @@ function OfflinePreview() {
   };
 
   const applyEdits = (edits: FactEdit[]) => {
-    const p = previewEdits(w, edits);
+    const p = previewEdits(w, edits, now);
     setPreview(p);
     // a fresh preview clears stale clarify/error toasts — old negative
     // messages must not contradict the current preview
@@ -340,7 +340,7 @@ function OfflinePreview() {
         )}
 
         {preview && (
-          <PreviewModal preview={preview} onApply={confirmPreview} onDiscard={() => setPreview(null)} />
+          <PreviewModal preview={preview} onApply={confirmPreview} onCorrect={applyEdits} onDiscard={() => setPreview(null)} />
         )}
 
 
@@ -459,10 +459,12 @@ function UtteranceInput({ onSubmit }: { onSubmit: (t: string) => void }) {
 function PreviewModal({
   preview,
   onApply,
+  onCorrect,
   onDiscard,
 }: {
   preview: Preview;
   onApply: () => void;
+  onCorrect: (edits: FactEdit[]) => void;
   onDiscard: () => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -471,7 +473,7 @@ function PreviewModal({
   useEffect(() => {
     restoreRef.current = document.activeElement as HTMLElement | null;
     const first = boxRef.current?.querySelector<HTMLElement>(
-      'button.primary:not(:disabled), button',
+      'button:not(:disabled)',
     );
     first?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -507,21 +509,21 @@ function PreviewModal({
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Change preview">
       <div className="modal" ref={boxRef}>
         <h3>Preview — nothing has changed yet</h3>
+        {preview.deltas.length > 0 && <ul className="deltas">
+          {preview.deltas.map((d) => (
+            <li key={d.key}>
+              <strong>{d.key}</strong>: {d.before} → {d.after}
+            </li>
+          ))}
+        </ul>}
         {preview.errors.length > 0 ? (
-          <ul className="errors">
+          <ul className="errors" role="alert">
             {preview.errors.map((e) => (
               <li key={e}>{e}</li>
             ))}
           </ul>
         ) : (
           <>
-            <ul className="deltas">
-              {preview.deltas.map((d) => (
-                <li key={d.key}>
-                  <strong>{d.key}</strong>: {d.before} → {d.after}
-                </li>
-              ))}
-            </ul>
             {preview.affected.length > 0 && (
               <p className="affects">
                 Will touch: {preview.affected.map((a) => a.label).join(', ')}.
@@ -532,14 +534,15 @@ function PreviewModal({
                 Stays exactly as booked: {preview.untouched.map((a) => a.label).join(', ')}.
               </p>
             )}
-            {preview.notes.map((n) => (
-              <p key={n} className="note">
-                {n}
-              </p>
-            ))}
           </>
         )}
+        {preview.notes.map((n) => (
+          <p key={n} className="note">{n}</p>
+        ))}
         <div className="modal-actions">
+          {preview.recovery && <button className="primary" onClick={() => onCorrect(preview.recovery!.edits)}>
+            {preview.recovery.label}
+          </button>}
           <button className="primary" onClick={onApply} disabled={preview.errors.length > 0}>
             Apply change
           </button>

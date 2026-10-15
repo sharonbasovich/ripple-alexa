@@ -91,24 +91,21 @@ export interface Preview {
   errors: string[];
   /** Explicit note shown when arrival changes: departure is NOT auto-moved. */
   notes: string[];
+  /** Optional exact-date correction; selecting it opens another preview. */
+  recovery?: { label: string; edits: FactEdit[] };
 }
 
-export function previewEdits(w: World, edits: FactEdit[]): Preview {
+export function previewEdits(w: World, edits: FactEdit[], now?: number): Preview {
   const next = E.applyEdits(w.facts, edits);
   const p: Preview = { edits, deltas: [], affected: [], untouched: [], errors: [], notes: [] };
   if (next === null) {
     p.errors.push('Unknown fact or malformed value.');
     return p;
   }
-  const v = E.validateFacts(next);
-  if (!v.ok) {
-    p.errors = v.errors;
-    return p;
-  }
   const fmt = (key: E.FactKey, val: unknown): string => {
     if ((key === 'arrival' || key === 'departure') && typeof val === 'string') {
       const t = E.parseLocal(val);
-      if (t !== null) return E.humanDayTime(t);
+      if (t !== null) return `${E.humanDay(t)} ${val.replace('T', ' ')}`;
     }
     return String(val);
   };
@@ -121,8 +118,33 @@ export function previewEdits(w: World, edits: FactEdit[]): Preview {
   }
   if (changed.has('arrival') && !changed.has('departure')) {
     p.notes.push(
-      `Departure stays ${fmt('departure', w.facts.departure)} — changing arrival never moves it. The visit gets shorter; it never silently stays three nights.`,
+      `Departure stays ${fmt('departure', w.facts.departure)} — changing arrival never moves it.`,
     );
+  }
+  if (changed.has('departure') && !changed.has('arrival')) {
+    p.notes.push(`Arrival stays ${fmt('arrival', w.facts.arrival)} — changing departure never moves it.`);
+  }
+  const v = E.validateFacts(next);
+  if (!v.ok) {
+    p.errors = v.errors;
+    if (changed.has('arrival') || changed.has('departure')) {
+      p.notes.push('Choose exact dates in Edit facts directly, or type Arrive YYYY-MM-DD HH:MM and Departure YYYY-MM-DD HH:MM.');
+    }
+    // Offer (never apply) the prior weekday only when it is still upcoming,
+    // precedes the current arrival, and the entire corrected trip validates.
+    // Normal weekday and explicit forward-week interpretation remain intact.
+    if (changed.has('arrival') && !edits.some((edit) => edit.key === 'departure') && now !== undefined &&
+        E.parseLocal(next.arrival)! >= E.parseLocal(next.departure)!) {
+      const earlier = E.addDays(E.parseLocal(next.arrival)!, -7);
+      const corrected = { ...next, arrival: E.formatLocal(earlier) };
+      if (earlier >= now && earlier < E.parseLocal(w.facts.arrival)! && E.validateFacts(corrected).ok) {
+        p.recovery = {
+          label: `Preview ${fmt('arrival', corrected.arrival)} instead`,
+          edits: edits.map((edit) => edit.key === 'arrival' ? { ...edit, value: corrected.arrival } : edit),
+        };
+      }
+    }
+    return p;
   }
   if (p.deltas.length === 0) p.notes.push('No fact actually changes — nothing to do.');
   const desired = E.desiredCommitments(next);
