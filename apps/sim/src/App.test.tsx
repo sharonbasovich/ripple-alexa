@@ -223,3 +223,65 @@ describe('open offline causal recall', () => {
     expect(recallPanel().textContent).toContain('Nothing was changed by that fact.');
   });
 });
+
+async function submitUtterance(text: string) {
+  await act(async () => {
+    const input = container.querySelector<HTMLInputElement>('[aria-label="Tell Alexa what changed"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, text);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await click('Send');
+}
+
+describe('arrival correction from an invalid weekday preview', () => {
+  it('shows exact dates, opens a fresh correction preview, and waits for Apply before persistence', async () => {
+    await editArrival('New plan: arrive Sat 9:40');
+    const before = localStorage.getItem('ripple:v1');
+    await submitUtterance('Arrive Friday 18:05');
+    let dialog = container.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('Friday 2026-10-23 18:05');
+    expect(dialog.textContent).toContain('Departure stays Sunday 2026-10-18 17:00');
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('Arrival must be before departure');
+    expect(document.activeElement?.textContent).toBe('Preview Friday 2026-10-16 18:05 instead');
+    expect([...dialog.querySelectorAll('button')].find(b => b.textContent === 'Apply change')?.disabled).toBe(true);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+
+    await click('Preview Friday 2026-10-16 18:05 instead');
+    dialog = container.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector('[role="alert"]')).toBeNull();
+    expect(dialog.textContent).toContain('Friday 2026-10-16 18:05');
+    expect(document.activeElement?.textContent).toBe('Apply change');
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    await click('Discard');
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+
+    await submitUtterance('Arrive Friday 18:05');
+    await click('Preview Friday 2026-10-16 18:05 instead');
+    await click('Apply change');
+    expect(load()?.world.facts).toEqual({ ...E.FIXTURE_FACTS, guests: 3 });
+    await act(async () => root.unmount());
+    await mount();
+    expect(load()?.world.facts.arrival).toBe('2026-10-16T18:05');
+  });
+
+  it('accepts an explicitly dated command through the composer without implicitly applying it', async () => {
+    await editArrival();
+    const before = localStorage.getItem('ripple:v1');
+    await submitUtterance('Arrive 2026-10-16 18:05');
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Friday 2026-10-16 18:05');
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    await click('Apply change');
+    expect(load()?.world.facts).toEqual(E.FIXTURE_FACTS);
+  });
+
+  it('focuses Discard when an invalid trip has no safe correction', async () => {
+    await editArrival();
+    const before = localStorage.getItem('ripple:v1');
+    await submitUtterance('Arrive Monday 9:40');
+    const dialog = container.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('Monday 2026-10-19 09:40');
+    expect(dialog.textContent).toContain('Choose exact dates');
+    expect(document.activeElement?.textContent).toBe('Discard');
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+  });
+});
