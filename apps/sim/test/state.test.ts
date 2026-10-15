@@ -151,3 +151,45 @@ describe('fmtParamValue', () => {
     expect(fmtParamValue(3)).toBe('3');
   });
 });
+
+describe('exact-date validation preview and recovery', () => {
+  it('shows an invalid interpretation and offers only a valid upcoming previous-week preview', () => {
+    const s = seed();
+    E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now);
+    const original = E.serializeWorld(s.world);
+    const p = previewEdits(s.world, [{ key: 'arrival', value: '2026-10-23T18:05' }], s.now);
+    expect(p.errors).toHaveLength(1);
+    expect(p.deltas[0]?.after).toBe('Friday 2026-10-23 18:05');
+    expect(p.notes.join(' ')).toContain('Departure stays Sunday 2026-10-18 17:00');
+    expect(p.recovery?.edits).toEqual([{ key: 'arrival', value: '2026-10-16T18:05' }]);
+    const corrected = previewEdits(s.world, p.recovery!.edits, s.now);
+    expect(corrected.errors).toHaveLength(0);
+    expect(corrected.notes.join(' ')).not.toContain('gets shorter');
+    expect(E.serializeWorld(s.world)).toBe(original);
+  });
+
+  it('never offers a past or still-invalid correction, or alters a compound date request', () => {
+    const s = seed();
+    E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now);
+    expect(previewEdits(s.world, [{ key: 'arrival', value: '2026-10-19T09:40' }], s.now).recovery).toBeUndefined();
+    expect(previewEdits(s.world, [{ key: 'arrival', value: '2026-10-23T18:05' }], E.parseLocal('2026-10-16T19:00')!).recovery).toBeUndefined();
+    expect(previewEdits(s.world, [
+      { key: 'arrival', value: '2026-10-23T18:05' }, { key: 'guests', value: 99 },
+    ], s.now).recovery).toBeUndefined();
+    expect(previewEdits(s.world, [
+      { key: 'arrival', value: '2026-10-23T18:05' }, { key: 'departure', value: '2026-10-19T08:00' },
+    ], s.now).recovery).toBeUndefined();
+    expect(previewEdits(s.world, [
+      { key: 'arrival', value: '2026-10-23T18:05' }, { key: 'departure', value: E.FIXTURE_FACTS.departure },
+    ], s.now).recovery).toBeUndefined();
+  });
+
+  it('explains unchanged arrival for an invalid departure-only change', () => {
+    const s = seed();
+    const p = previewEdits(s.world, [{ key: 'departure', value: '2026-10-15T17:00' }], s.now);
+    expect(p.errors.length).toBeGreaterThan(0);
+    expect(p.deltas[0]?.after).toBe('Thursday 2026-10-15 17:00');
+    expect(p.notes.join(' ')).toContain('Arrival stays Friday 2026-10-16 18:05');
+    expect(p.recovery).toBeUndefined();
+  });
+});
