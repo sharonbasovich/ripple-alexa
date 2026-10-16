@@ -139,7 +139,7 @@ button { overflow-wrap: anywhere; }
 
 .choices h2 { margin: 0 0 4px; font-size: 1.15rem; }
 .cs-meta { display: block; font-size: 0.8rem; color: var(--ink-dim); font-weight: 400; }
-.choices.settled { opacity: 0.9; }
+/* Keep settled cards opaque; explicit labels and badges communicate status. */
 .op-list { display: grid; gap: 12px; margin-top: 12px; }
 
 .op-card { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 12px; padding: 14px 16px; background: #fffefb; }
