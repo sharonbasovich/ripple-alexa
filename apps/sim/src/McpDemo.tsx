@@ -91,6 +91,8 @@ export function McpDemo(props: McpDemoProps = {}) {
   const activeSession = useRef<BrowserMcpSession | null>(null);
   const connectionGeneration = useRef(0);
   const connectionPending = useRef(false);
+  const actionPending = useRef(false);
+  const recoveryNeeded = useRef(false);
 
   useEffect(() => () => {
     // A connection may finish after switching back to the offline demo.
@@ -151,7 +153,10 @@ export function McpDemo(props: McpDemoProps = {}) {
       setSession(createdSession);
       setTools(createdSession.tools.map((tool) => tool.name).sort());
       setStatus(initial);
-      setMessage('Browser MCP client initialized, listed tools, and read server state.');
+      setMessage(recoveryNeeded.current
+        ? 'Current server state reconciled with get_status. No action was retried; review the returned operation state before continuing.'
+        : 'Browser MCP client initialized, listed tools, and read server state.');
+      recoveryNeeded.current = false;
     } catch (cause) {
       if (generation !== connectionGeneration.current) return;
       const detail = cause instanceof Error ? cause.message : String(cause);
@@ -198,16 +203,22 @@ export function McpDemo(props: McpDemoProps = {}) {
     return next;
   };
 
-  const runTool = async <T,>(tool: string, args: Record<string, unknown>, onResult: (result: T) => Promise<void> | void) => {
-    if (!session) return;
+  const runTool = async <T,>(tool: string, args: Record<string, unknown>, onResult: (result: T, refresh: () => Promise<McpStatus>) => Promise<void> | void) => {
+    if (!session || actionPending.current) return;
+    actionPending.current = true;
+    let acknowledged = false;
     setBusy(true);
     setError('');
     setMessage('');
     try {
       const result = (await callBrowserMcpTool(session, tool, args)) as unknown as T;
-      await onResult(result);
+      await onResult(result, () => {
+        acknowledged = true;
+        return refreshStatus(session);
+      });
     } catch (cause) {
-      if (cause instanceof McpTransportError) {
+      if (cause instanceof McpTransportError || acknowledged) {
+        recoveryNeeded.current = true;
         appendSessionTrace(session);
         if (activeSession.current === session) closeActiveSession();
         setSession((current) => current === session ? null : current);
@@ -215,8 +226,11 @@ export function McpDemo(props: McpDemoProps = {}) {
         setStatus(null);
         setBaseline(null);
         setAfterProposal(null);
-        setMessage('The last server state was cleared because the transport failed. Reconnect to read current state.');
-        setError(`MCP transport disconnected during ${tool}: ${cause.message}. No offline engine action was run; reconnect manually to continue.`);
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        setMessage('Reconnect to read current server state before taking another action. No action will be retried automatically.');
+        setError(acknowledged
+          ? `Server acknowledged ${tool}, but the follow-up get_status could not verify current state: ${detail}. The last displayed state was cleared.`
+          : `Outcome unknown for ${tool}: the action may have completed before its response failed. ${detail}. The last displayed state was cleared.`);
       } else if (cause instanceof McpToolError) {
         setError(`${tool} was rejected by the MCP server: ${cause.message}. The MCP session remains connected; no offline engine action was run.`);
       } else {
@@ -224,14 +238,15 @@ export function McpDemo(props: McpDemoProps = {}) {
       }
     } finally {
       appendSessionTrace(session);
+      actionPending.current = false;
       setBusy(false);
     }
   };
 
   const resetServer = () =>
-    runTool<Record<string, unknown>>('plan_visit', SAMPLE_FACTS, async (result) => {
+    runTool<Record<string, unknown>>('plan_visit', SAMPLE_FACTS, async (result, refresh) => {
       if (result.ok !== true) throw new Error('Server refused the sample plan.');
-      const next = await refreshStatus(session!);
+      const next = await refresh();
       setBaseline(next.liveCommitments);
       setAfterProposal(null);
       setMessage('The server reset its in-memory synthetic sample plan.');
@@ -250,9 +265,9 @@ export function McpDemo(props: McpDemoProps = {}) {
           { key: 'guests', value: status.facts.guests + 1 },
         ],
       },
-        async (result) => {
+        async (result, refresh) => {
         if (result.ok !== true) throw new Error('Server rejected the proposed fact edits.');
-        const next = await refreshStatus(session!);
+        const next = await refresh();
         setAfterProposal(structuredClone(next.liveCommitments));
         setMessage('Proposal received from apply_change. Nothing executes until you approve an exact operation.');
       },
@@ -265,11 +280,11 @@ export function McpDemo(props: McpDemoProps = {}) {
       {
         ops: [{ id: op.id, payloadHash: op.payloadHash, factsVersion: op.factsVersion }],
       },
-      async (result) => {
+      async (result, refresh) => {
         if (result.ok !== true || result.results?.[0]?.ok !== true) {
           throw new Error(result.results?.[0]?.reason ?? 'Server did not accept the decision.');
         }
-        await refreshStatus(session!);
+        await refresh();
         setMessage(decision === 'confirm_ops'
           ? 'Server recorded approval against the displayed operation hash and facts revision. It is not executed yet.'
           : 'Server recorded the decline; the booking remains as it was.');
@@ -280,9 +295,9 @@ export function McpDemo(props: McpDemoProps = {}) {
     runTool<{ ok: boolean; outcomes?: { opId: string; status: string; reason?: string }[] }>(
       'execute_approved',
       {},
-      async (result) => {
+      async (result, refresh) => {
         if (result.ok !== true) throw new Error('Server did not execute the approved operations.');
-        await refreshStatus(session!);
+        await refresh();
         const count = result.outcomes?.length ?? 0;
         setMessage(`Server returned ${count} execution outcome${count === 1 ? '' : 's'}; current state is refreshed from get_status.`);
       },
