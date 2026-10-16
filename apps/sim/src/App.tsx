@@ -529,12 +529,17 @@ function PreviewModal({
           <>
             {preview.affected.length > 0 && (
               <p className="affects">
-                Will touch: {preview.affected.map((a) => a.label).join(', ')}.
+                New or revised repairs to review: {preview.affected.map((a) => a.label).join(', ')}.
+              </p>
+            )}
+            {preview.carriedForward.length > 0 && (
+              <p className="carried-forward">
+                Earlier plan differences to review again: {preview.carriedForward.map((a) => a.label).join(', ')}.
               </p>
             )}
             {preview.untouched.length > 0 && (
               <p className="unaffected">
-                Stays exactly as booked: {preview.untouched.map((a) => a.label).join(', ')}.
+                No repair proposed for: {preview.untouched.map((a) => a.label).join(', ')}.
               </p>
             )}
           </>

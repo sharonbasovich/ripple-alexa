@@ -97,8 +97,11 @@ export interface Preview {
   edits: FactEdit[];
   /** Facts that actually change, human-readable. */
   deltas: { key: string; before: string; after: string }[];
-  /** Commitments that will be touched (causal preview). */
+  /** New or revised repair targets introduced by these edits. */
   affected: { id: string; label: string; service: string }[];
+  /** Earlier plan differences still needing a fresh decision, even if their
+   *  predecessor was declined or expired. These targets are not new effects. */
+  carriedForward: { id: string; label: string; service: string }[];
   untouched: { id: string; label: string }[];
   errors: string[];
   /** Explicit note shown when arrival changes: departure is NOT auto-moved. */
@@ -109,7 +112,7 @@ export interface Preview {
 
 export function previewEdits(w: World, edits: FactEdit[], now?: number): Preview {
   const next = E.applyEdits(w.facts, edits);
-  const p: Preview = { edits, deltas: [], affected: [], untouched: [], errors: [], notes: [] };
+  const p: Preview = { edits, deltas: [], affected: [], carriedForward: [], untouched: [], errors: [], notes: [] };
   if (next === null) {
     p.errors.push('Unknown fact or malformed value.');
     return p;
@@ -158,15 +161,33 @@ export function previewEdits(w: World, edits: FactEdit[], now?: number): Preview
     }
     return p;
   }
-  if (p.deltas.length === 0) p.notes.push('No fact actually changes — nothing to do.');
-  const desired = E.desiredCommitments(next);
-  for (const d of desired) {
-    if (d.dependsOn.some((f) => changed.has(f))) {
-      p.affected.push({ id: d.id, label: d.label, service: d.service });
-    } else {
-      p.untouched.push({ id: d.id, label: d.label });
-    }
+  if (p.deltas.length === 0) {
+    p.notes.push('No fact actually changes - nothing to do. Existing decisions stay as they are.');
+    return p;
   }
+  const desired = E.desiredCommitments(next);
+  // Match changeFacts/propose: compare the entire desired plan with live
+  // bookings, not just dependencies of the newest fact edit. Pure diffing
+  // does not supersede decisions, journal events, execute actions or charge.
+  const repairs = E.diff(w.commitments, desired, w.factsVersion + 1);
+  const repairIds = new Set(repairs.ops.map(op => op.commitmentId));
+  const priorDesired = new Map(E.desiredCommitments(w.facts).map(d => [d.id, d]));
+  const nextDesired = new Map(desired.map(d => [d.id, d]));
+  for (const id of repairIds) {
+    const target = nextDesired.get(id);
+    const prior = priorDesired.get(id);
+    // The diff retains the actual orphan even if an accepted saved map key
+    // differs from the commitment's id. Do not look it up by that id again.
+    const c = target ?? repairs.orphans.find(orphan => orphan.id === id)!;
+    const entry = { id, label: c.label, service: c.service };
+    const revised = E.canonical(prior?.params) !== E.canonical(target?.params) || prior?.cost !== target?.cost;
+    (revised ? p.affected : p.carriedForward).push(entry);
+  }
+  p.untouched = Object.values(w.commitments)
+    .filter(c => !repairIds.has(c.id)).map(c => ({ id: c.id, label: c.label }));
+  if (w.changeSets.length) p.notes.push(
+    'Applying this fact change replaces any open decisions and approvals. Earlier plan differences, including declined or expired choices, may be proposed again. Nothing is booked or charged until you approve and apply the new decisions.',
+  );
   return p;
 }
 
