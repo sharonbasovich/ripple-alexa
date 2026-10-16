@@ -228,7 +228,7 @@ describe('McpDemo connection lifecycle', () => {
       activeSession.trace.push(failed);
       throw new McpTransportError('server disconnected', activeSession.trace);
     });
-    await clickAndWait('Propose Saturday arrival + one guest', () => uiText().includes('MCP transport disconnected during apply_change'));
+    await clickAndWait('Propose Saturday arrival + one guest', () => uiText().includes('Outcome unknown for apply_change'));
 
     expect(container?.querySelector('.connection-badge')?.textContent).toBe('Not connected');
     expect(uiText()).not.toContain('Tools returned by tools/list');
@@ -246,5 +246,106 @@ describe('McpDemo connection lifecycle', () => {
     expect(mcp.callBrowserMcpTool).toHaveBeenCalledTimes(1);
     expect(firstSession.client.close).toHaveBeenCalled();
     expect(persistedLocalState()).toBe(localStateBefore);
+  });
+});
+
+function operationSession(opStatus: string) {
+  const session = makeSession();
+  return {
+    ...session,
+    initialStatus: {
+      ...session.initialStatus,
+      changeSet: {
+        id: 'change:2', status: 'open', trigger: 'Arrival changed', factsVersion: 2, expiresAt: 123,
+        ops: [{
+          id: 'op:cancel', kind: 'cancel', service: 'restaurant', commitmentId: 'restaurant:dinner',
+          label: 'Cancel arrival dinner', before: { guests: 3 }, after: null, patch: {},
+          fee: 75, costDelta: -120, requiresConsent: true, status: opStatus,
+          payloadHash: 'exact-reviewed-hash', factsVersion: 2,
+        }],
+      },
+    },
+  };
+}
+
+describe('McpDemo uncertain action recovery', () => {
+  it.each([
+    ['proposed', 'Approve this exact operation', 'confirm_ops', 'approved'],
+    ['approved', 'Execute 1 approved change on server', 'execute_approved', 'executed'],
+  ])('quarantines stale %s state until a read-only reconnect', async (before, button, tool, after) => {
+    const session = operationSession(before);
+    const recovered = operationSession(after);
+    mcp.connectBrowserMcp.mockResolvedValueOnce(session).mockResolvedValueOnce(recovered);
+    mcp.callBrowserMcpTool.mockImplementationOnce(async (active, name) => {
+      active.trace.push({ method: 'tools/call', request: { params: { name } }, error: 'response lost after commit' });
+      throw new McpTransportError('response lost after commit', active.trace);
+    });
+    await mountDemo();
+    await clickAndWait('Connect to MCP server', () => uiText().includes('MCP connected'));
+    await clickAndWait(button, () => uiText().includes(`Outcome unknown for ${tool}`));
+
+    expect(uiText()).toContain('may have completed');
+    expect(uiText()).toContain('No action will be retried automatically');
+    expect(uiText()).not.toContain('was rejected');
+    expect(container?.querySelector('.mcp-state-panel')).toBeNull();
+    expect(container?.querySelector('.mcp-op')).toBeNull();
+    expect(session.client.close).toHaveBeenCalledTimes(1);
+    expect(mcp.callBrowserMcpTool).toHaveBeenCalledTimes(1);
+    if (tool === 'confirm_ops') {
+      expect(mcp.callBrowserMcpTool.mock.calls[0]?.[2]).toEqual({
+        ops: [{ id: 'op:cancel', payloadHash: 'exact-reviewed-hash', factsVersion: 2 }],
+      });
+    }
+
+    await clickAndWait('Connect to MCP server', () => uiText().includes('Current server state reconciled'));
+    expect(uiText()).toContain('No action was retried');
+    expect(uiText()).toContain('response lost after commit');
+    expect(uiText()).toContain('exact-reviewed-hash');
+    expect(container?.querySelector('.mcp-op .pill')?.textContent).toBe(after);
+    expect(mcp.callBrowserMcpTool).toHaveBeenCalledTimes(1);
+    expect([...container!.querySelectorAll('button')].some((item) => item.textContent === button)).toBe(false);
+  });
+
+  it('distinguishes acknowledged approval from an unsuccessful verification read', async () => {
+    const session = operationSession('proposed');
+    mcp.connectBrowserMcp.mockResolvedValueOnce(session);
+    mcp.callBrowserMcpTool
+      .mockResolvedValueOnce({ ok: true, results: [{ ok: true, reason: 'approve' }] })
+      .mockRejectedValueOnce(new McpToolError('status unavailable', [], 'get_status'));
+    await mountDemo();
+    await clickAndWait('Connect to MCP server', () => uiText().includes('MCP connected'));
+    await clickAndWait('Approve this exact operation', () => uiText().includes('Server acknowledged confirm_ops'));
+
+    expect(uiText()).toContain('follow-up get_status could not verify current state');
+    expect(uiText()).not.toContain('Outcome unknown');
+    expect(container?.querySelector('.mcp-state-panel')).toBeNull();
+    expect(mcp.callBrowserMcpTool.mock.calls.map((call) => call[1])).toEqual(['confirm_ops', 'get_status']);
+    expect(session.client.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mislabel a declined decision result as an acknowledged action or failed read', async () => {
+    mcp.connectBrowserMcp.mockResolvedValueOnce(operationSession('proposed'));
+    mcp.callBrowserMcpTool.mockResolvedValueOnce({ ok: true, results: [{ ok: false, reason: 'payload-mismatch' }] });
+    await mountDemo();
+    await clickAndWait('Connect to MCP server', () => uiText().includes('MCP connected'));
+    await clickAndWait('Approve this exact operation', () => uiText().includes('payload-mismatch'));
+
+    expect(uiText()).not.toContain('Server acknowledged');
+    expect(uiText()).not.toContain('follow-up get_status');
+    expect(mcp.callBrowserMcpTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends one mutation for repeated clicks before the busy state renders', async () => {
+    const session = operationSession('approved');
+    mcp.connectBrowserMcp.mockResolvedValueOnce(session);
+    mcp.callBrowserMcpTool
+      .mockResolvedValueOnce({ ok: true, outcomes: [] })
+      .mockResolvedValueOnce(operationSession('executed').initialStatus);
+    await mountDemo();
+    await clickAndWait('Connect to MCP server', () => uiText().includes('MCP connected'));
+    const button = container?.querySelector<HTMLButtonElement>('.mcp-execute');
+    await act(async () => { button?.click(); button?.click(); });
+
+    expect(mcp.callBrowserMcpTool.mock.calls.map((call) => call[1])).toEqual(['execute_approved', 'get_status']);
   });
 });
