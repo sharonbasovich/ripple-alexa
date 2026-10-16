@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as E from '@ripple/engine';
 import type { ChangeSet, FactEdit, FactKey, Op, World } from '@ripple/engine';
 import type { SimState } from './state';
@@ -8,6 +8,7 @@ import {
   persist,
   clearPersisted,
   persistFailed,
+  subscribePersistStatus,
   discardedSnapshot,
   previewEdits,
   runUtterance,
@@ -64,6 +65,7 @@ export default function App({ allowMcpConnect = import.meta.env.DEV }: { allowMc
 
 function OfflinePreview() {
   const [sim, setSim] = useState<SimState>(() => load() ?? seed());
+  const saveError = useSyncExternalStore(subscribePersistStatus, persistFailed);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [notice, setNotice] = useState<string>('');
   const [examples, setExamples] = useState<string[]>([]);
@@ -354,9 +356,10 @@ function OfflinePreview() {
           </div>
         )}
 
-        {persistFailed() && (
+        {saveError !== null && (
           <div className="notice warn-inline" role="alert">
-            Browser storage is unavailable — changes work now but will NOT survive a reload.
+            Browser storage could not save this plan. Recent changes are only in memory;
+            reloading may restore an older saved plan or start fresh.
           </div>
         )}
 
