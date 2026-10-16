@@ -94,6 +94,89 @@ afterEach(async () => {
 });
 
 describe('McpDemo connection lifecycle', () => {
+  it('closes a connection that finishes after the connected demo is unmounted', async () => {
+    const session = makeSession();
+    let finishConnection!: (value: ReturnType<typeof makeSession>) => void;
+    mcp.connectBrowserMcp.mockReturnValueOnce(new Promise((resolve) => { finishConnection = resolve; }));
+    await mountDemo();
+
+    await clickAndWait('Connect to MCP server', () => uiText().includes('Connecting…'));
+    await act(async () => root?.unmount());
+    root = undefined;
+    await act(async () => finishConnection(session));
+
+    expect(session.client.close).toHaveBeenCalledTimes(1);
+    expect(mcp.callBrowserMcpTool).not.toHaveBeenCalled();
+  });
+
+  it('closes a returned session when unmount happens before its state is committed', async () => {
+    const session = makeSession();
+    let finishConnection!: (value: ReturnType<typeof makeSession>) => void;
+    mcp.connectBrowserMcp.mockReturnValueOnce(new Promise((resolve) => { finishConnection = resolve; }));
+    await mountDemo();
+    await clickAndWait('Connect to MCP server', () => uiText().includes('Connecting…'));
+
+    await act(async () => {
+      finishConnection(session);
+      await Promise.resolve();
+      root?.unmount();
+      root = undefined;
+    });
+
+    expect(session.client.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts only one connection for repeated clicks before React renders', async () => {
+    const session = makeSession();
+    mcp.connectBrowserMcp.mockResolvedValue(session);
+    await mountDemo();
+    const button = container?.querySelector('button');
+    await act(async () => {
+      button?.click();
+      button?.click();
+    });
+
+    expect(mcp.connectBrowserMcp).toHaveBeenCalledTimes(1);
+    expect(uiText()).toContain('MCP connected');
+    await clickAndWait('Disconnect', () => uiText().includes('Disconnected from the MCP server.'));
+    expect(session.client.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes an abandoned connection without affecting a newly mounted session', async () => {
+    const abandoned = makeSession();
+    const current = makeSession();
+    let finishConnection!: (value: ReturnType<typeof makeSession>) => void;
+    mcp.connectBrowserMcp
+      .mockReturnValueOnce(new Promise((resolve) => { finishConnection = resolve; }))
+      .mockResolvedValueOnce(current);
+    await mountDemo();
+    await clickAndWait('Connect to MCP server', () => uiText().includes('Connecting…'));
+    await act(async () => root?.unmount());
+    container?.remove();
+    await mountDemo();
+    await clickAndWait('Connect to MCP server', () => uiText().includes('MCP connected'));
+    await act(async () => finishConnection(abandoned));
+
+    expect(abandoned.client.close).toHaveBeenCalledTimes(1);
+    expect(current.client.close).not.toHaveBeenCalled();
+    expect(uiText()).toContain('MCP connected');
+    expect(mcp.callBrowserMcpTool).not.toHaveBeenCalled();
+  });
+
+  it('handles rejected cleanup from an abandoned session without an unhandled rejection', async () => {
+    const session = makeSession();
+    session.client.close.mockRejectedValueOnce(new Error('transport already closed'));
+    let finishConnection!: (value: ReturnType<typeof makeSession>) => void;
+    mcp.connectBrowserMcp.mockReturnValueOnce(new Promise((resolve) => { finishConnection = resolve; }));
+    await mountDemo();
+    await clickAndWait('Connect to MCP server', () => uiText().includes('Connecting…'));
+    await act(async () => root?.unmount());
+    root = undefined;
+    await act(async () => finishConnection(session));
+
+    expect(session.client.close).toHaveBeenCalledTimes(1);
+  });
+
   it('does not show connected when the initial status read fails and retains its failed trace', async () => {
     const failedTrace = [
       { method: 'initialize', httpStatus: 200, request: { method: 'initialize' }, response: { result: {} } },
