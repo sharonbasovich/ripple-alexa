@@ -52,6 +52,14 @@ export function load(): SimState | null {
 }
 
 let lastPersistError: string | null = null;
+const persistListeners = new Set<() => void>();
+
+/** Notify mounted views when a save fails or recovers, including the first
+ *  attempt after mount. Subscribing never writes or replays world actions. */
+export function subscribePersistStatus(listener: () => void): () => void {
+  persistListeners.add(listener);
+  return () => { persistListeners.delete(listener); };
+}
 
 /** True when the last persist attempt failed (storage denied/full) — the
  *  app keeps working in memory but must say so honestly. */
@@ -60,6 +68,7 @@ export function persistFailed(): string | null {
 }
 
 export function persist(s: SimState): void {
+  const previousError = lastPersistError;
   try {
     localStorage.setItem(
       STORAGE_KEY,
@@ -68,6 +77,9 @@ export function persist(s: SimState): void {
     lastPersistError = null;
   } catch (e) {
     lastPersistError = e instanceof Error ? e.message : 'storage write failed';
+  }
+  if (lastPersistError !== previousError) {
+    for (const listener of persistListeners) listener();
   }
 }
 
