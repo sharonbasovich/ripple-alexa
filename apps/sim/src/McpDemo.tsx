@@ -88,10 +88,25 @@ export function McpDemo(props: McpDemoProps = {}) {
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const traceCursor = useRef(new WeakMap<BrowserMcpSession, number>());
+  const activeSession = useRef<BrowserMcpSession | null>(null);
+  const connectionGeneration = useRef(0);
+  const connectionPending = useRef(false);
 
   useEffect(() => () => {
-    void session?.client.close().catch(() => undefined);
-  }, [session]);
+    // A connection may finish after switching back to the offline demo.
+    // Invalidate it even if React has not committed the returned session yet.
+    connectionGeneration.current += 1;
+    connectionPending.current = false;
+    const active = activeSession.current;
+    activeSession.current = null;
+    void active?.client.close().catch(() => undefined);
+  }, []);
+
+  const closeActiveSession = () => {
+    const active = activeSession.current;
+    activeSession.current = null;
+    void active?.client.close().catch(() => undefined);
+  };
 
   const connected = session !== null;
   const ops = status?.changeSet?.ops ?? [];
@@ -111,6 +126,11 @@ export function McpDemo(props: McpDemoProps = {}) {
   };
 
   const connect = async () => {
+    // Ref ownership also covers repeated clicks before the disabled state renders.
+    if (connectionPending.current) return;
+    const generation = ++connectionGeneration.current;
+    connectionPending.current = true;
+    closeActiveSession();
     setConnecting(true);
     setError('');
     setMessage('');
@@ -121,6 +141,11 @@ export function McpDemo(props: McpDemoProps = {}) {
     setSession(null);
     try {
       const createdSession = await connectBrowserMcp(endpoint ?? new URL('/mcp', window.location.origin));
+      if (generation !== connectionGeneration.current) {
+        void createdSession.client.close().catch(() => undefined);
+        return;
+      }
+      activeSession.current = createdSession;
       appendSessionTrace(createdSession);
       const initial = createdSession.initialStatus as unknown as McpStatus;
       setSession(createdSession);
@@ -128,6 +153,7 @@ export function McpDemo(props: McpDemoProps = {}) {
       setStatus(initial);
       setMessage('Browser MCP client initialized, listed tools, and read server state.');
     } catch (cause) {
+      if (generation !== connectionGeneration.current) return;
       const detail = cause instanceof Error ? cause.message : String(cause);
       if (cause instanceof McpConnectionError || cause instanceof McpTransportError || cause instanceof McpToolError) {
         setTrace((previous) => [...previous, ...cause.trace]);
@@ -145,12 +171,17 @@ export function McpDemo(props: McpDemoProps = {}) {
         setError(`MCP connection setup failed: ${detail}. No offline engine action was run.`);
       }
     } finally {
-      setConnecting(false);
+      if (generation === connectionGeneration.current) {
+        connectionPending.current = false;
+        setConnecting(false);
+      }
     }
   };
 
   const disconnect = () => {
     if (session) appendSessionTrace(session);
+    connectionGeneration.current += 1;
+    closeActiveSession();
     setSession(null);
     setTools([]);
     setStatus(null);
@@ -178,6 +209,7 @@ export function McpDemo(props: McpDemoProps = {}) {
     } catch (cause) {
       if (cause instanceof McpTransportError) {
         appendSessionTrace(session);
+        if (activeSession.current === session) closeActiveSession();
         setSession((current) => current === session ? null : current);
         setTools([]);
         setStatus(null);
