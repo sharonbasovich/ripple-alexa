@@ -74,6 +74,116 @@ describe('persistence', () => {
 });
 
 describe('previewEdits', () => {
+  it('does not promise unresolved arrival repairs stay booked on a budget-only follow-up', () => {
+    const s = seed();
+    E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now);
+    const before = E.serializeWorld(s.world);
+    const edits: E.FactEdit[] = [{ key: 'budget', value: 250 }];
+    const p = previewEdits(s.world, edits, s.now);
+    expect(E.serializeWorld(s.world)).toBe(before);
+    const projected = structuredClone(s.world);
+    const actual = E.changeFacts(projected, edits, s.now).changeSet!;
+    const actualIds = new Set(actual.ops.map(op => op.commitmentId));
+    expect(actualIds.size).toBe(6);
+    expect(p.untouched.filter(c => actualIds.has(c.id))).toEqual([]);
+    expect(p.affected).toEqual([]);
+    expect(p.carriedForward).toHaveLength(6);
+    expect(p.untouched.map(c => c.id)).toEqual(['routines:farewell']);
+  });
+
+  it.each([
+    ['budget', 'pending'], ['budget', 'approved'], ['budget', 'declined'], ['budget', 'expired'],
+    ['guests', 'pending'], ['guests', 'approved'], ['guests', 'declined'], ['guests', 'expired'],
+  ] as const)('matches actual whole-plan proposals for %s after %s arrival decisions', (fact, status) => {
+    const s = seed();
+    const prior = E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now).changeSet!;
+    const cancellation = prior.ops.find(op => op.kind === 'cancel' && op.fee === 75)!;
+    const oldConsent = E.consentFor(s.world, cancellation);
+    if (status === 'approved') expect(E.approve(s.world, oldConsent, s.now).ok).toBe(true);
+    if (status === 'declined') for (const op of prior.ops) E.decline(s.world, E.consentFor(s.world, op), s.now);
+    if (status === 'expired') { s.now += E.CHANGESET_TTL_MS; E.advanceTime(s.world, s.now); }
+    const before = E.serializeWorld(s.world);
+    const edits: E.FactEdit[] = [fact === 'budget' ? { key: 'budget', value: 250 } : { key: 'guests', value: 3 }];
+    const p = previewEdits(s.world, edits, s.now);
+    expect(E.serializeWorld(s.world)).toBe(before);
+    expect(p.errors).toEqual([]);
+    expect(p.affected).toHaveLength(fact === 'budget' ? 0 : 5);
+    expect(p.carriedForward.map(c => c.id)).toEqual(fact === 'budget'
+      ? ['calendar:visit', 'grocery:arrival-delivery', 'restaurant:arrival-dinner', 'routines:welcome', 'routines:coffee', 'pickup:airport']
+      : ['pickup:airport']);
+    expect(p.untouched.map(c => c.id)).toEqual(['routines:farewell']);
+    expect(p.notes.join(' ')).toContain('replaces any open decisions and approvals');
+    expect(p.notes.join(' ')).toContain('declined or expired choices');
+
+    const projected = structuredClone(s.world);
+    const cs = E.changeFacts(projected, edits, s.now).changeSet!;
+    expect([...new Set(cs.ops.map(op => op.commitmentId))].sort())
+      .toEqual([...p.affected, ...p.carriedForward].map(c => c.id).sort());
+    expect(projected.commitments).toEqual(s.world.commitments);
+    expect(projected.feesCharged).toBe(0);
+    expect(cs.ops.every(op => op.status === 'proposed')).toBe(true);
+    expect(cs.ops.every(op => !prior.ops.some(old => old.id === op.id))).toBe(true);
+    if (status === 'approved') {
+      expect(E.approve(projected, oldConsent, s.now)).toMatchObject({ ok: false, reason: 'stale' });
+      expect(E.executeApproved(projected, s.now)).toEqual([]);
+      const freshCancellation = cs.ops.find(op => op.kind === 'cancel')!;
+      expect(E.approve(projected, E.consentFor(projected, freshCancellation), s.now).ok).toBe(true);
+      E.executeApproved(projected, s.now);
+      expect(projected.feesCharged).toBe(75);
+      E.executeApproved(projected, s.now);
+      expect(projected.feesCharged).toBe(75);
+    }
+  });
+
+  it('keeps unresolved decisions intact for a no-op instead of promising every booking matches', () => {
+    const s = seed();
+    E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now);
+    const before = E.serializeWorld(s.world);
+    const edits: E.FactEdit[] = [{ key: 'budget', value: s.world.facts.budget }];
+    const p = previewEdits(s.world, edits, s.now);
+    expect(p.affected).toEqual([]);
+    expect(p.carriedForward).toEqual([]);
+    expect(p.untouched).toEqual([]);
+    expect(p.notes.join(' ')).toContain('Existing decisions stay as they are');
+    expect(E.changeFacts(s.world, edits, s.now).noOp).toBe(true);
+    expect(E.serializeWorld(s.world)).toBe(before);
+  });
+
+  it('previews an orphan with an inconsistent map key accepted by the saved-world loader', () => {
+    const s = seed();
+    s.world.commitments['renamed-map-key'] = { ...s.world.commitments['calendar:visit']!, id: 'orphan-id' };
+    const restored = E.deserializeWorld(E.serializeWorld(s.world));
+    expect(restored).not.toBeNull();
+    const before = E.serializeWorld(restored!);
+    const edits: E.FactEdit[] = [{ key: 'budget', value: 250 }];
+    const p = previewEdits(restored!, edits, s.now);
+    expect(p.carriedForward).toEqual([{ id: 'orphan-id', label: 'Family visit', service: 'calendar' }]);
+    expect(E.serializeWorld(restored!)).toBe(before);
+    const actual = E.changeFacts(structuredClone(restored!), edits, s.now).changeSet!;
+    expect(actual.ops.map(op => op.commitmentId)).toEqual(p.carriedForward.map(c => c.id));
+  });
+
+  it('carries only outstanding repairs after a paid cancellation and never duplicates the fee', () => {
+    const s = seed();
+    const first = E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now).changeSet!;
+    const cancellation = first.ops.find(op => op.kind === 'cancel')!;
+    E.approve(s.world, E.consentFor(s.world, cancellation), s.now);
+    E.executeApproved(s.world, s.now);
+    const before = E.serializeWorld(s.world);
+    const edits: E.FactEdit[] = [{ key: 'budget', value: 250 }];
+    const p = previewEdits(s.world, edits, s.now);
+    expect(E.serializeWorld(s.world)).toBe(before);
+    expect(p.affected).toEqual([]);
+    expect(p.carriedForward.some(c => c.id === 'restaurant:arrival-dinner')).toBe(true);
+    const cs = E.changeFacts(s.world, edits, s.now).changeSet!;
+    expect(s.world.feesCharged).toBe(75);
+    expect(cs.ops.some(op => op.kind === 'cancel')).toBe(false);
+    const rebook = cs.ops.find(op => op.kind === 'create' && op.commitmentId === cancellation.commitmentId)!;
+    E.approve(s.world, E.consentFor(s.world, rebook), s.now);
+    E.executeApproved(s.world, s.now);
+    expect(s.world.feesCharged).toBe(75);
+  });
+
   it('reports deltas, affected vs untouched commitments, departure note', () => {
     const s = seed();
     const p = previewEdits(s.world, [

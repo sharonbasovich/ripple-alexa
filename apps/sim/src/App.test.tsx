@@ -98,6 +98,56 @@ afterEach(async () => {
   container.remove();
 });
 
+describe('consecutive offline fact previews', () => {
+  it('previews carried arrival repairs and approval replacement before a budget-only change', async () => {
+    await editArrival();
+    await click('Approve', familyOp());
+    const before = localStorage.getItem('ripple:v1');
+    await click('Budget $250');
+    const dialog = container.querySelector('[role="dialog"]')!;
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    expect(dialog.querySelector('.unaffected')?.textContent).not.toContain('Family visit');
+    expect(dialog.querySelector('.carried-forward')?.textContent).toContain('Family visit');
+    expect(dialog.querySelector('.affects')).toBeNull();
+    expect(dialog.textContent).toContain('approvals');
+    await click('Discard', dialog);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    expect(load()?.world.changeSets.at(-1)?.ops.some(op => op.status === 'approved')).toBe(true);
+    await click('Budget $250');
+    await click('Apply change');
+    expect(load()?.world.feesCharged).toBe(0);
+    expect(load()?.world.changeSets.at(-1)?.ops.every(op => op.status === 'proposed')).toBe(true);
+    expect(container.textContent).not.toContain('Apply 1 approved change');
+    await click('Approve with $75 fee');
+    await click('Apply 1 approved change');
+    expect(load()?.world.feesCharged).toBe(75);
+  });
+
+  it.each(['declined', 'expired'] as const)('separates revised guest repairs from carried arrival differences after %s decisions', async status => {
+    await editArrival();
+    if (status === 'declined') {
+      while ([...container.querySelectorAll('button')].some(b => b.textContent === 'Decline')) await click('Decline');
+    } else { await click('+6h'); await click('+6h'); }
+    const before = localStorage.getItem('ripple:v1');
+    await click('My brother is joining');
+    const dialog = container.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector('.affects')?.textContent).toContain('Family visit');
+    expect(dialog.querySelector('.affects')?.textContent).not.toContain('Airport pickup');
+    expect(dialog.querySelector('.carried-forward')?.textContent).toContain('Airport pickup');
+    expect(dialog.querySelector('.carried-forward')?.textContent).not.toContain('Family visit');
+    expect(dialog.querySelector('.unaffected')?.textContent).toBe('No repair proposed for: Departure-day lock-up routine.');
+    expect(dialog.textContent).toContain('declined or expired choices');
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    await click('Discard');
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    await click('My brother is joining');
+    await click('Apply change');
+    expect(load()?.world.changeSets.at(-1)?.ops.every(op => op.status === 'proposed')).toBe(true);
+    expect(load()?.world.feesCharged).toBe(0);
+  });
+
+});
+
 describe('open offline causal recall', () => {
   it('shows applied history and newer pending changes together through approval, execution and reload', async () => {
     await editArrival();
