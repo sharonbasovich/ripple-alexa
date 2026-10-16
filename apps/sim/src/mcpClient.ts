@@ -25,7 +25,7 @@ export class McpConnectionError extends Error {
   }
 }
 
-/** A failed HTTP/fetch exchange means this session can no longer be trusted as connected. */
+/** Transport loss or an invalid response leaves the action outcome unverified. */
 export class McpTransportError extends Error {
   constructor(message: string, readonly trace: RpcExchange[]) {
     super(message);
@@ -111,36 +111,83 @@ export async function callBrowserMcpTool(
     throw new McpTransportError(`MCP server returned HTTP ${exchange.httpStatus}.`, [...session.trace]);
   }
   if (result.isError) {
-    throw new McpToolError(`MCP tool ${name} returned an error: ${JSON.stringify(result)}`, [...session.trace], name);
+    throw new McpTransportError(`MCP tool ${name} reported an error without a verified outcome.`, [...session.trace]);
   }
-  if (!result.structuredContent) {
-    throw new McpToolError(`MCP tool ${name} returned no structured content.`, [...session.trace], name);
+  if (!validToolResult(name, result.structuredContent)) {
+    throw new McpTransportError(`MCP tool ${name} returned invalid or missing structured content.`, [...session.trace]);
   }
   return result.structuredContent as Record<string, unknown>;
 }
 
 function isTransportFailure(exchange: RpcExchange | undefined, error: unknown): boolean {
-  if (!exchange) return !isJsonRpcValidationError(error);
+  if (!exchange) return true;
   if (exchange.error) return true;
   if (exchange.httpStatus !== undefined && (exchange.httpStatus < 200 || exchange.httpStatus >= 300)) return true;
-  // JSON-RPC validation errors arrive as a valid HTTP response and leave the
-  // Streamable HTTP session usable. Keep them as tool errors in the UI.
-  return !isJsonRpcResponse(exchange.response) && !isJsonRpcValidationError(error);
-}
-
-function isJsonRpcResponse(response: unknown): boolean {
-  return Boolean(
-    response
-    && typeof response === 'object'
-    && 'jsonrpc' in response
-    && ('result' in response || 'error' in response),
-  );
+  // Only a definite request/argument rejection proves that the tool did not
+  // run. A JSON-RPC-shaped response can still contain an invalid SDK result
+  // after a mutation committed; never describe that as a rejected action.
+  const response = exchange.response;
+  return !(record(response) && response.jsonrpc === '2.0' && !('result' in response)
+    && record(response.error) && isJsonRpcValidationError(response.error)
+    && isJsonRpcValidationError(error));
 }
 
 function isJsonRpcValidationError(error: unknown): boolean {
   if (!error || typeof error !== 'object' || !('code' in error)) return false;
   const code = (error as { code?: unknown }).code;
   return code === -32600 || code === -32601 || code === -32602;
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function strings(value: Record<string, unknown>, keys: string[]): boolean {
+  return keys.every((key) => typeof value[key] === 'string');
+}
+
+function numbers(value: Record<string, unknown>, keys: string[]): boolean {
+  return keys.every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]));
+}
+
+function validOperation(value: unknown): boolean {
+  if (!record(value)) return false;
+  return strings(value, ['id', 'kind', 'service', 'commitmentId', 'label', 'status', 'payloadHash'])
+    && numbers(value, ['fee', 'costDelta', 'factsVersion'])
+    && typeof value.requiresConsent === 'boolean'
+    && (value.before === null || record(value.before))
+    && (value.after === null || record(value.after)) && record(value.patch)
+    && (value.reason === undefined || typeof value.reason === 'string')
+    && (value.irreversibleNote === undefined || typeof value.irreversibleNote === 'string');
+}
+
+/** Validate the data used for status rendering and exact consent before trusting it. */
+function validToolResult(name: string, value: unknown): boolean {
+  if (!record(value) || typeof value.ok !== 'boolean') return false;
+  if (!value.ok) return true; // A structured, explicit operation rejection.
+  if (name === 'confirm_ops' || name === 'decline_ops') {
+    return Array.isArray(value.results) && value.results.length > 0 && value.results.every((item) =>
+      record(item) && typeof item.ok === 'boolean' && strings(item, ['opId', 'reason']));
+  }
+  if (name === 'execute_approved') {
+    return Array.isArray(value.outcomes) && value.outcomes.every((item) =>
+      record(item) && strings(item, ['opId', 'status']));
+  }
+  if (name === 'apply_change') {
+    return value.noOp === true || (strings(value, ['changeSetId']) && numbers(value, ['factsVersion'])
+      && Array.isArray(value.ops) && value.ops.every(validOperation));
+  }
+  if (name !== 'get_status') return true;
+  if (!record(value.facts) || !strings(value.facts, ['arrival', 'departure'])
+    || !numbers(value.facts, ['guests', 'budget']) || !numbers(value, ['factsVersion', 'feesCharged', 'openOps'])
+    || !record(value.budget) || typeof value.budget.feasible !== 'boolean'
+    || !numbers(value.budget, ['budget', 'committed', 'fees', 'pendingAdds', 'projected', 'overBy'])
+    || !Array.isArray(value.liveCommitments)
+    || !value.liveCommitments.every((item) => record(item) && strings(item, ['id', 'state'])
+      && numbers(item, ['cost']) && record(item.params))) return false;
+  const cs = value.changeSet;
+  return cs === null || (record(cs) && strings(cs, ['id', 'status', 'trigger'])
+    && numbers(cs, ['factsVersion', 'expiresAt']) && Array.isArray(cs.ops) && cs.ops.every(validOperation));
 }
 
 function traceFetch(trace: RpcExchange[]): typeof fetch {
@@ -172,14 +219,13 @@ function traceFetch(trace: RpcExchange[]): typeof fetch {
     }
 
     if (request && typeof request === 'object' && 'jsonrpc' in request) {
-      const rawResponse = await response.clone().text();
-      const responseBody = parseResponseBody(rawResponse);
-      trace.push({
-        method,
-        request,
-        response: responseBody,
-        httpStatus: response.status,
-      });
+      try {
+        const rawResponse = await response.clone().text();
+        trace.push({ method, request, response: parseResponseBody(rawResponse), httpStatus: response.status });
+      } catch (error) {
+        trace.push({ method, request, httpStatus: response.status, error: errorMessage(error) });
+        throw error;
+      }
     }
     return response;
   };
