@@ -73,8 +73,11 @@ does not invoke the offline engine.
 
 The evidence panel keeps exchanges across manual reconnects and can download
 the actual request/response trace as JSON, tagged with the tested commit. If a
-later HTTP transport fails, the page preserves the failed exchange, clears the
-last server state, and requires the user to reconnect before continuing.
+later response is lost or invalid, the page preserves the failed exchange,
+clears stale mutation controls, and says that the action outcome is unknown.
+If the action was acknowledged but its follow-up status read failed, it says
+so separately. Manual reconnect reads current server state without replaying
+any mutation; recovered approvals keep their exact operation hash and revision.
 
 This local setup needs no paid hosting or always-on server. The production build
 is a static offline preview; it has no MCP proxy and leaves the Connect button

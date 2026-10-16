@@ -35,11 +35,24 @@ jobs:
         env:
           CAPTURE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/ripple-capture-tools/node_modules/playwright/index.mjs
           VITE_GIT_COMMIT: ${{ env.CAPTURE_COMMIT }}
+      - name: Verify uncertain mutation recovery over real browser HTTP
+        run: node scripts/test-mcp-browser-recovery.mjs
+        env:
+          CAPTURE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/ripple-capture-tools/node_modules/playwright/index.mjs
+          VITE_GIT_COMMIT: ${{ env.CAPTURE_COMMIT }}
       - name: Upload lifecycle observations before harness shutdown
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ripple-mcp-lifecycle-${{ env.CAPTURE_COMMIT }}
           path: artifacts/mcp-lifecycle/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload recovery screenshots and JSON-RPC evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ripple-mcp-recovery-${{ env.CAPTURE_COMMIT }}
+          path: artifacts/mcp-recovery/
           if-no-files-found: warn
           retention-days: 14
