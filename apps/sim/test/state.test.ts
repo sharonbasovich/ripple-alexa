@@ -238,6 +238,58 @@ describe('runUtterance', () => {
 });
 
 describe('speakableSummary', () => {
+  it.each(['routine', 'pickup', 'restaurant', 'multiple', 'pending', 'approved', 'expired', 'grocery pending', 'grocery declined', 'grocery applied'] as const)('reports supported %s rejection without hiding other decision states or mutating the world', how => {
+    const s = seed();
+    const grocery = how.startsWith('grocery');
+    if (!grocery) { s.now += 6 * 3_600_000; E.advanceTime(s.world, s.now); }
+    const cs = E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now).changeSet!;
+    const targets = grocery ? ['grocery:arrival-delivery'] : how === 'multiple'
+      ? ['routines:welcome', 'pickup:airport', 'restaurant:arrival-dinner']
+      : [how === 'pickup' ? 'pickup:airport' : how === 'restaurant' ? 'restaurant:arrival-dinner' : 'routines:welcome'];
+    for (const op of cs.ops) {
+      const target = targets.includes(op.commitmentId) && op.kind !== 'create';
+      if (target || (!grocery && op.commitmentId === 'calendar:visit')) E.approve(s.world, E.consentFor(s.world, op), s.now);
+      else if (!(['pending', 'approved', 'expired'].includes(how) && op.commitmentId === 'routines:coffee')) E.decline(s.world, E.consentFor(s.world, op), s.now);
+    }
+    if (!grocery) { s.now += 6 * 3_600_000; E.advanceTime(s.world, s.now); }
+    const commitments = structuredClone(s.world.commitments);
+    const outcomes = E.executeApproved(s.world, s.now);
+    const rejected = cs.ops.filter(op => op.status === 'rejected');
+    const count = how === 'multiple' ? 3 : 1;
+    expect(outcomes.filter(outcome => outcome.status === 'rejected')).toHaveLength(count);
+    for (const op of rejected) {
+      expect(op.reason).toMatch(/completed|dispatched/);
+      expect(s.world.commitments[op.commitmentId]).toEqual(commitments[op.commitmentId]);
+    }
+    const coffee = cs.ops.find(op => op.commitmentId === 'routines:coffee')!;
+    if (how === 'approved') E.approve(s.world, E.consentFor(s.world, coffee), s.now);
+    if (how === 'expired') { s.now += 6 * 3_600_000; E.advanceTime(s.world, s.now); }
+    if (how === 'grocery declined' || how === 'grocery applied') {
+      const alternative = cs.ops.find(op => op.isAlternative)!;
+      expect(alternative.status).toBe('proposed');
+      if (how === 'grocery declined') E.decline(s.world, E.consentFor(s.world, alternative), s.now);
+      else {
+        E.approve(s.world, E.consentFor(s.world, alternative), s.now);
+        expect(E.executeApproved(s.world, s.now)).toEqual([{ opId: alternative.id, status: 'executed' }]);
+      }
+    }
+    const before = E.serializeWorld(s.world);
+    const text = speakableSummary(s.world, s.now);
+    expect(text).toContain(`${count} change${count === 1 ? ' was' : 's were'} rejected and not applied`);
+    expect(text).toContain('Review rejected change cards');
+    expect(text).not.toContain('settled');
+    if (how === 'pending' || how === 'grocery pending') expect(text).toContain('1 change need your decision');
+    if (how === 'approved') expect(text).toContain('1 approved change ready to apply');
+    if (how === 'expired') expect(text).toContain('1 change expired without being applied');
+    expect(text).toContain(`spend is $${how === 'grocery applied' ? 256 : 196} of a $300 budget`);
+    expect(text.split(/\s+/).length).toBeLessThan(75);
+    expect(E.serializeWorld(s.world)).toBe(before);
+    const restored = E.deserializeWorld(before)!;
+    expect(speakableSummary(restored, s.now)).toBe(text);
+    expect(E.serializeWorld(restored)).toBe(before);
+    expect(E.serializeWorld(E.replay(s.world.journal))).toBe(before);
+  });
+
   it.each(['unapproved', 'approved', 'partial', 'one remaining'] as const)('reports %s expired repairs without mutating state, including reload and fresh re-check', how => {
     const s = seed();
     const cs = E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now).changeSet!;

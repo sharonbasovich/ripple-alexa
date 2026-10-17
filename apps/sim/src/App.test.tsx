@@ -152,6 +152,52 @@ describe('expired offline status', () => {
   });
 });
 
+describe('rejected offline status', () => {
+  it.each(['terminal', 'pending', 'approved', 'expired', 'grocery declined'] as const)('keeps typed and spoken summaries truthful for supported %s rejection and reload', async how => {
+    const speak = vi.spyOn(Speech, 'speak').mockImplementation(() => {});
+    const grocery = how === 'grocery declined';
+    if (!grocery) await click('+6h');
+    await editArrival();
+    const card = (label: string) => [...container.querySelectorAll('.op-card')].find(el => el.textContent?.includes(label))!;
+    if (!grocery) await click('Approve', familyOp());
+    await click('Approve', card(grocery ? 'Update: Arrival-day grocery delivery' : 'Update: Guest welcome routine'));
+    const keepCoffee = ['pending', 'approved', 'expired'].includes(how);
+    let undecided: Element | undefined;
+    while ((undecided = [...container.querySelectorAll('.op-card')].find(el =>
+      [...el.querySelectorAll('button')].some(b => b.textContent === 'Decline') &&
+      !(keepCoffee && el.textContent?.includes('Update: Morning coffee routine'))))) await click('Decline', undecided);
+    if (!grocery) await click('+6h');
+    await click(`Apply ${grocery ? '1' : '2'} approved change`);
+    expect(load()?.world.changeSets.at(-1)?.ops.filter(op => op.status === 'rejected')).toHaveLength(1);
+    if (grocery) await click('Decline');
+    if (how === 'approved') await click('Approve');
+    if (how === 'expired') await click('+6h');
+    const before = localStorage.getItem('ripple:v1');
+    const text = await askStatus();
+    expect(text).toContain('1 change was rejected and not applied');
+    expect(text).toContain('Review rejected change cards');
+    expect(text).not.toContain('settled');
+    if (how === 'pending') expect(text).toContain('1 change need your decision');
+    if (how === 'approved') expect(text).toContain('1 approved change ready to apply');
+    if (how === 'expired') expect(text).toContain('1 change expired without being applied');
+    expect(text).toContain('spend is $196 of a $300 budget');
+    expect(text.split(/\s+/).length).toBeLessThan(75);
+    expect(speak).toHaveBeenLastCalledWith(text);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    const calls = speak.mock.calls.length;
+    await click('Speak summary');
+    expect(speak).toHaveBeenCalledTimes(calls + 1);
+    expect(speak).toHaveBeenLastCalledWith(text);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    await act(async () => root.unmount());
+    await mount();
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    expect(await askStatus()).toBe(text);
+    expect(speak).toHaveBeenLastCalledWith(text);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+  });
+});
+
 describe('consecutive offline fact previews', () => {
   it('previews carried arrival repairs and approval replacement before a budget-only change', async () => {
     await editArrival();
