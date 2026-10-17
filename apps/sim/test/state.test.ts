@@ -238,6 +238,112 @@ describe('runUtterance', () => {
 });
 
 describe('speakableSummary', () => {
+  it.each(['unapproved', 'approved', 'partial', 'one remaining'] as const)('reports %s expired repairs without mutating state, including reload and fresh re-check', how => {
+    const s = seed();
+    const cs = E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now).changeSet!;
+    if (how === 'approved') for (const op of cs.ops) E.approve(s.world, E.consentFor(s.world, op), s.now);
+    if (how === 'partial') {
+      const cancellation = cs.ops.find(op => op.kind === 'cancel')!;
+      E.approve(s.world, E.consentFor(s.world, cancellation), s.now);
+      E.executeApproved(s.world, s.now);
+    }
+    if (how === 'one remaining') for (const op of cs.ops.slice(1)) E.decline(s.world, E.consentFor(s.world, op), s.now);
+    s.now += E.CHANGESET_TTL_MS;
+    E.advanceTime(s.world, s.now);
+    const before = E.serializeWorld(s.world);
+    const text = speakableSummary(s.world, s.now);
+    expect(E.serializeWorld(s.world)).toBe(before);
+    expect(text).not.toContain('settled');
+    const count = how === 'one remaining' ? 1 : how === 'partial' ? 6 : 7;
+    expect(text).toContain(`${count} change${count === 1 ? '' : 's'} expired without being applied`);
+    expect(text).toContain('Re-check for open decisions');
+    expect(text).toContain(`spend is $${how === 'partial' ? 151 : 196} of a $300 budget`);
+    expect(text.split(/\s+/).length).toBeLessThan(75);
+    const restored = E.deserializeWorld(before)!;
+    expect(speakableSummary(restored, s.now)).toBe(text);
+    expect(E.serializeWorld(restored)).toBe(before);
+    E.repropose(restored, s.now, 're-check at your request');
+    expect(restored.commitments).toEqual(s.world.commitments);
+    expect(restored.feesCharged).toBe(how === 'partial' ? 75 : 0);
+    const freshOps = restored.changeSets.at(-1)!.ops;
+    if (how === 'one remaining') {
+      expect(freshOps.filter(op => op.status === 'proposed')).toHaveLength(1);
+      expect(freshOps.filter(op => op.status === 'declined')).toHaveLength(6);
+    } else expect(freshOps.every(op => op.status === 'proposed')).toBe(true);
+    const refreshed = E.serializeWorld(restored);
+    const freshText = speakableSummary(restored, s.now);
+    expect(freshText).toContain('need your decision');
+    expect(freshText).not.toContain('expired');
+    expect(freshText.split(/\s+/).length).toBeLessThan(75);
+    expect(E.serializeWorld(restored)).toBe(refreshed);
+  });
+
+  it.each([
+    ['unapproved', 300], ['approved', 300], ['partial', 300],
+    ['unapproved', 100], ['approved', 100], ['partial', 100],
+  ] as const)('reads effective expiry with truthful spend without advancing time (%s, budget $%s)', (how, budget) => {
+    const s = seed();
+    const cs = E.changeFacts(s.world, [
+      { key: 'arrival', value: '2026-10-17T09:40' }, { key: 'budget', value: budget },
+    ], s.now).changeSet!;
+    if (how === 'approved') for (const op of cs.ops) E.approve(s.world, E.consentFor(s.world, op), s.now);
+    if (how === 'partial') {
+      const cancellation = cs.ops.find(op => op.kind === 'cancel')!;
+      E.approve(s.world, E.consentFor(s.world, cancellation), s.now);
+      E.executeApproved(s.world, s.now);
+    }
+    const before = E.serializeWorld(s.world);
+    const future = s.now + E.CHANGESET_TTL_MS;
+    const text = speakableSummary(s.world, future);
+    expect(text).toContain('expired without being applied');
+    const spend = how === 'partial' ? 151 : 196;
+    expect(text).toContain(budget === 300 ? `spend is $${spend} of a $300 budget` : `over budget by $${spend - budget}`);
+    expect(text.split(/\s+/).length).toBeLessThan(75);
+    expect(E.serializeWorld(s.world)).toBe(before);
+    expect(s.world.changeSets.at(-1)?.status).toBe('open');
+    const advanced = E.deserializeWorld(before)!;
+    E.advanceTime(advanced, future);
+    expect(speakableSummary(advanced, future)).toBe(text);
+  });
+
+  it.each(['fresh', 'declined', 'fully applied'] as const)('preserves a genuinely settled %s summary after time passes', how => {
+    const s = seed();
+    if (how !== 'fresh') {
+      const cs = E.changeFacts(s.world, [how === 'declined'
+        ? { key: 'arrival', value: '2026-10-17T09:40' }
+        : { key: 'departure', value: '2026-10-18T18:00' }], s.now).changeSet!;
+      for (const op of cs.ops) {
+        if (how === 'declined') E.decline(s.world, E.consentFor(s.world, op), s.now);
+        else E.approve(s.world, E.consentFor(s.world, op), s.now);
+      }
+      if (how === 'fully applied') {
+        const outcomes = E.executeApproved(s.world, s.now);
+        expect(outcomes).toHaveLength(2);
+        expect(outcomes.every(outcome => outcome.status === 'executed')).toBe(true);
+      }
+    }
+    s.now += E.CHANGESET_TTL_MS;
+    E.advanceTime(s.world, s.now);
+    const before = E.serializeWorld(s.world);
+    const text = speakableSummary(s.world, s.now);
+    expect(text).toContain('Your visit plan is settled');
+    expect(text).not.toContain('expired');
+    expect(text.split(/\s+/).length).toBeLessThan(75);
+    expect(E.serializeWorld(s.world)).toBe(before);
+  });
+
+  it.each([false, true])('preserves active decision/approval summaries before expiry (approved=%s)', approved => {
+    const s = seed();
+    const cs = E.changeFacts(s.world, [{ key: 'arrival', value: '2026-10-17T09:40' }], s.now).changeSet!;
+    if (approved) for (const op of cs.ops) E.approve(s.world, E.consentFor(s.world, op), s.now);
+    const before = E.serializeWorld(s.world);
+    const text = speakableSummary(s.world, s.now);
+    expect(text).toContain(approved ? '7 approved changes ready to apply' : '7 changes need your decision');
+    expect(text).not.toContain('expired');
+    expect(text.split(/\s+/).length).toBeLessThan(75);
+    expect(E.serializeWorld(s.world)).toBe(before);
+  });
+
   it('stays under 75 words and contains no ids or markdown', () => {
     const s = seed();
     E.changeFacts(

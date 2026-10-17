@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as E from '@ripple/engine';
 import App from './App';
 import { fmtParamValue, load } from './state';
+import * as Speech from './speech';
 
 Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { value: true, configurable: true });
 
@@ -49,6 +50,16 @@ async function setArrival(value: string) {
   });
   await click('Preview change');
   await click('Apply change');
+}
+
+async function askStatus() {
+  const input = container.querySelector<HTMLInputElement>('[aria-label="Tell Alexa what changed"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Status');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  return container.querySelector('.notice[role="status"]')?.firstChild?.textContent ?? '';
 }
 
 function familyOp() {
@@ -96,6 +107,49 @@ beforeEach(async () => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.restoreAllMocks();
+});
+
+describe('expired offline status', () => {
+  it.each(['unapproved', 'approved', 'partial'] as const)('keeps typed and spoken Status truthful and read-only for %s expiry, reload and re-check', async how => {
+    const speak = vi.spyOn(Speech, 'speak').mockImplementation(() => {});
+    await editArrival();
+    if (how === 'approved') await click('Approve', familyOp());
+    if (how === 'partial') {
+      await click('Approve with $75 fee');
+      await click('Apply 1 approved change');
+    }
+    await click('+6h');
+    await click('+6h');
+    const before = localStorage.getItem('ripple:v1');
+    const text = await askStatus();
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    expect(text).not.toContain('settled');
+    expect(text).toContain('expired without being applied');
+    expect(text).toContain('Re-check for open decisions');
+    expect(text).toContain(`${how === 'partial' ? 6 : 7} changes expired`);
+    expect(text.split(/\s+/).length).toBeLessThan(75);
+    expect(speak).toHaveBeenLastCalledWith(text);
+    const callsBeforeSpeak = speak.mock.calls.length;
+    await click('Speak summary');
+    expect(speak).toHaveBeenCalledTimes(callsBeforeSpeak + 1);
+    expect(speak).toHaveBeenLastCalledWith(text);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    expect(load()?.world.feesCharged).toBe(how === 'partial' ? 75 : 0);
+    await act(async () => root.unmount());
+    await mount();
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    expect(await askStatus()).toBe(text);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    await click('Re-check for open decisions');
+    const refreshed = localStorage.getItem('ripple:v1');
+    const freshText = await askStatus();
+    expect(freshText).toContain('need your decision');
+    expect(freshText).not.toContain('expired');
+    expect(speak).toHaveBeenLastCalledWith(freshText);
+    expect(localStorage.getItem('ripple:v1')).toBe(refreshed);
+    expect(load()?.world.feesCharged).toBe(how === 'partial' ? 75 : 0);
+  });
 });
 
 describe('consecutive offline fact previews', () => {
