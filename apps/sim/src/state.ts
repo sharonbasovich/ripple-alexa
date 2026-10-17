@@ -271,7 +271,15 @@ export function speakableSummary(w: World, now: number): string {
   const approved = cs
     ? cs.ops.filter((o) => E.effectiveOpStatus(cs, o, now) === 'approved')
     : [];
+  const expired = cs
+    ? cs.ops.filter((o) => E.effectiveOpStatus(cs, o, now) === 'expired')
+    : [];
   const b = E.budgetStatus(w);
+  // A read at effective expiry must exclude inactive, still-stored proposals.
+  const spend = b.committed + b.fees;
+  const overBy = expired.length && !pending.length && !approved.length
+    ? Math.max(0, spend - b.budget)
+    : b.overBy;
   const parts: string[] = [];
   if (pending.length) {
     parts.push(
@@ -283,13 +291,18 @@ export function speakableSummary(w: World, now: number): string {
     }
   } else if (approved.length) {
     parts.push(`${approved.length} approved change${approved.length === 1 ? '' : 's'} ready to apply`);
+  } else if (expired.length) {
+    // Expiry closes a decision window, not the underlying unapplied repair.
+    // Count only those operations so partial execution stays truthful.
+    parts.push(`${expired.length} change${expired.length === 1 ? '' : 's'} expired without being applied`);
+    parts.push('Use Re-check for open decisions to review fresh choices');
   } else {
     parts.push('Your visit plan is settled');
   }
   parts.push(
-    b.feasible
-      ? `spend is $${b.committed + b.fees} of a $${b.budget} budget`
-      : `over budget by $${b.overBy}`,
+    overBy === 0
+      ? `spend is $${spend} of a $${b.budget} budget`
+      : `over budget by $${overBy}`,
   );
   return parts.join('; ') + '.';
 }
