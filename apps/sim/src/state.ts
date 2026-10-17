@@ -274,6 +274,7 @@ export function speakableSummary(w: World, now: number): string {
   const expired = cs
     ? cs.ops.filter((o) => E.effectiveOpStatus(cs, o, now) === 'expired')
     : [];
+  const rejected = cs ? cs.ops.filter((o) => o.status === 'rejected') : [];
   const b = E.budgetStatus(w);
   // A read at effective expiry must exclude inactive, still-stored proposals.
   const spend = b.committed + b.fees;
@@ -296,8 +297,12 @@ export function speakableSummary(w: World, now: number): string {
     // Count only those operations so partial execution stays truthful.
     parts.push(`${expired.length} change${expired.length === 1 ? '' : 's'} expired without being applied`);
     parts.push('Use Re-check for open decisions to review fresh choices');
-  } else {
+  } else if (!rejected.length) {
     parts.push('Your visit plan is settled');
+  }
+  if (rejected.length) {
+    parts.push(`${rejected.length} change${rejected.length === 1 ? ' was' : 's were'} rejected and not applied`);
+    parts.push('Review rejected change cards');
   }
   parts.push(
     overBy === 0
