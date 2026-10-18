@@ -108,6 +108,92 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe('speech snapshot lifetime', () => {
+  function speechQueue() {
+    const queue = { active: null as string | null, spoken: [] as string[] };
+    vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
+    vi.stubGlobal('speechSynthesis', {
+      cancel: vi.fn(() => { queue.active = null; }),
+      speak: vi.fn((utterance: { text: string }) => { queue.active = utterance.text; queue.spoken.push(utterance.text); }),
+    });
+    return queue;
+  }
+
+  async function toggle(label: string) {
+    const input = [...container.querySelectorAll('label')].find(el => el.textContent?.trim() === label)!.querySelector('input')!;
+    await act(async () => input.click());
+  }
+
+  it.each(['reset', 'mode', 'expiry', 'approve', 'decline', 'paid execution', 'fact apply', 'recheck'] as const)('invalidates old speech when %s changes its plan context', async how => {
+    const queue = speechQueue();
+    if (how === 'mode') await act(async () => root.render(createElement(App, { allowMcpConnect: false })));
+    await editArrival();
+    if (how === 'paid execution') await click('Approve with $75 fee');
+    if (how === 'recheck') { await click('+6h'); await click('+6h'); }
+    await toggle('Voice');
+    const before = localStorage.getItem('ripple:v1');
+    const initial = await askStatus();
+    expect(queue.active).toBe(initial);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    if (how === 'reset') await click('Reset demo');
+    if (how === 'mode') await click('Local MCP setup');
+    if (how === 'expiry') { await click('+6h'); await click('+6h'); }
+    if (how === 'approve') await click('Approve', familyOp());
+    if (how === 'decline') await click('Decline', familyOp());
+    if (how === 'paid execution') await click('Apply 1 approved change');
+    if (how === 'fact apply') {
+      await click('Budget $250');
+      expect(queue.active).toBe(initial);
+      expect(localStorage.getItem('ripple:v1')).toBe(before);
+      await click('Apply change');
+    }
+    if (how === 'recheck') await click('Re-check for open decisions');
+    expect(queue.active).toBeNull();
+    if (how === 'mode') {
+      expect(Speech.voiceEnabled()).toBe(false);
+      expect(localStorage.getItem('ripple:v1')).toBe(before);
+      await click('Try offline preview');
+      expect(Speech.voiceEnabled()).toBe(false);
+      await toggle('Voice');
+    }
+    if (how === 'expiry') expect(container.querySelector('.notice[role="status"]')?.textContent ?? '').not.toContain('need your decision');
+    if (how === 'paid execution') {
+      expect(load()!.world.feesCharged).toBe(75);
+      expect(load()!.world.journal.filter(entry => entry.type === 'execute')).toHaveLength(1);
+    }
+    const current = localStorage.getItem('ripple:v1');
+    const fresh = await askStatus();
+    expect(queue.active).toBe(fresh);
+    expect(localStorage.getItem('ripple:v1')).toBe(current);
+    if (how === 'expiry') expect(fresh).toContain('expired without being applied');
+    if (how === 'reset') expect(fresh).toContain('settled');
+  });
+
+  it('replaces rapid announcements while preserving current speech through read-only presentation changes', async () => {
+    const queue = speechQueue();
+    await editArrival();
+    await toggle('Voice');
+    const before = localStorage.getItem('ripple:v1');
+    const text = await askStatus();
+    expect(await askStatus()).toBe(text);
+    await click('Speak summary');
+    await click('Speak summary');
+    expect(queue.spoken).toEqual([text, text, text, text]);
+    expect(queue.active).toBe(text);
+    await toggle('Compact');
+    await toggle('Phone size');
+    await click('Causal receipt');
+    expect(queue.active).toBe(text);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    await toggle('Voice');
+    expect(queue.active).toBeNull();
+    await click('Speak summary');
+    expect(queue.spoken).toHaveLength(4);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+  });
 });
 
 describe('expired offline status', () => {

@@ -81,7 +81,11 @@ function OfflinePreview() {
   const recall = recallFact === null ? null : E.recallByFact(w, recallFact, now);
 
   useEffect(() => persist(sim), [sim]);
-  useEffect(() => setVoiceEnabled(voice), [voice]);
+  // Speech belongs to this committed plan/clock snapshot and mounted preview.
+  useEffect(() => {
+    setVoiceEnabled(voice);
+    return () => setVoiceEnabled(false);
+  }, [voice, sim]);
 
   const update = (fn: (w: World) => void, speakText?: string) => {
     setSim((s) => {
@@ -94,6 +98,7 @@ function OfflinePreview() {
 
   // combined clock+world update so `now` and transitions stay in lockstep
   const tick = (ms: number) => {
+    setNotice(''); // A previous Status snapshot may be invalid after time advances.
     setSim((s) => {
       const world = structuredClone(s.world);
       const t = s.now + ms;
