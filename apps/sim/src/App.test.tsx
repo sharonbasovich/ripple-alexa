@@ -198,6 +198,67 @@ describe('rejected offline status', () => {
   });
 });
 
+describe('interrupted direct fact previews', () => {
+  it.each([['8', '02'], ['100000', '0300']])('clears an equivalent numeric draft for field max=%s without opening a no-op preview', async (max, value) => {
+    const input = container.querySelector<HTMLInputElement>(`input[type="number"][max="${max}"]`)!;
+    const before = localStorage.getItem('ripple:v1');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click('Preview change');
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect([...container.querySelectorAll('button')].find(b => b.textContent === 'Preview change')?.disabled).toBe(true);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+  });
+
+  it.each(['Discard', 'Escape'] as const)('keeps the exact draft retryable after %s and applies it only once', async cancel => {
+    const input = container.querySelector<HTMLInputElement>('input[type="number"][max="100000"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '250');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const before = localStorage.getItem('ripple:v1');
+    const original = load()!.world;
+    for (let retry = 0; retry < 3; retry++) {
+      const opener = [...container.querySelectorAll('button')].find(b => b.textContent === 'Preview change')!;
+      opener.focus();
+      await click('Preview change');
+      expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+      expect(localStorage.getItem('ripple:v1')).toBe(before);
+      if (cancel === 'Discard') await click('Discard');
+      else await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+      expect(input.value).toBe('250');
+      expect(opener.disabled).toBe(false);
+      expect(document.activeElement).toBe(opener);
+      expect(localStorage.getItem('ripple:v1')).toBe(before);
+    }
+    await click('Preview change');
+    await click('Apply change');
+    const applied = load()!.world;
+    expect(applied.facts).toEqual({ ...original.facts, budget: 250 });
+    expect(applied.factsVersion).toBe(original.factsVersion + 1);
+    expect(applied.commitments).toEqual(original.commitments);
+    expect(applied.feesCharged).toBe(original.feesCharged);
+    expect(applied.journal.filter(entry => entry.type === 'facts')).toHaveLength(original.journal.filter(entry => entry.type === 'facts').length + 1);
+    expect([...container.querySelectorAll('button')].find(b => b.textContent === 'Preview change')?.disabled).toBe(true);
+  });
+
+  it('clears the editor when a draft is reverted to the saved value without opening a preview', async () => {
+    const input = container.querySelector<HTMLInputElement>('input[type="number"][max="100000"]')!;
+    const before = localStorage.getItem('ripple:v1');
+    for (const value of ['250', '300']) await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click('Preview change');
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect([...container.querySelectorAll('button')].find(b => b.textContent === 'Preview change')?.disabled).toBe(true);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+  });
+});
+
 describe('consecutive offline fact previews', () => {
   it('previews carried arrival repairs and approval replacement before a budget-only change', async () => {
     await editArrival();

@@ -209,12 +209,12 @@ export function collectEdits(
     const n = Number(form.guests);
     // empty/blank or non-integer is invalid — never coerce '' to 0
     if (form.guests.trim() === '' || !Number.isInteger(n)) return null;
-    edits.push({ key: 'guests', value: n });
+    if (n !== facts.guests) edits.push({ key: 'guests', value: n });
   }
   if (form.budget !== String(facts.budget)) {
     const n = Number(form.budget);
     if (form.budget.trim() === '' || !Number.isInteger(n)) return null;
-    edits.push({ key: 'budget', value: n });
+    if (n !== facts.budget) edits.push({ key: 'budget', value: n });
   }
   return edits;
 }

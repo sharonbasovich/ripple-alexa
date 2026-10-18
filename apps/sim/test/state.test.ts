@@ -9,6 +9,7 @@ import {
   runUtterance,
   speakableSummary,
   fmtParamValue,
+  collectEdits,
 } from '../src/state';
 
 // minimal localStorage stub — node env has none
@@ -234,6 +235,23 @@ describe('runUtterance', () => {
     const unk = runUtterance(s.world, 'Order me a pizza', s.now);
     expect(unk.type).toBe('unknown');
     if (unk.type === 'unknown') expect(unk.examples.length).toBeGreaterThan(0);
+  });
+});
+
+describe('collectEdits numeric drafts', () => {
+  const form = { arrival: E.FIXTURE_FACTS.arrival, departure: E.FIXTURE_FACTS.departure };
+  it.each([['02', '0300'], ['2.0', '300.0'], ['2e0', '3e2']])('ignores equivalent numeric formats (%s guests, $%s)', (guests, budget) => {
+    expect(collectEdits(E.FIXTURE_FACTS, { ...form, guests, budget })).toEqual([]);
+  });
+
+  it('keeps real numeric edits and rejects blank or fractional inputs', () => {
+    expect(collectEdits(E.FIXTURE_FACTS, { ...form, guests: '03', budget: '0250' })).toEqual([
+      { key: 'guests', value: 3 }, { key: 'budget', value: 250 },
+    ]);
+    expect(collectEdits(E.FIXTURE_FACTS, { ...form, guests: '', budget: '300' })).toBeNull();
+    expect(collectEdits(E.FIXTURE_FACTS, { ...form, guests: '2', budget: '   ' })).toBeNull();
+    expect(collectEdits(E.FIXTURE_FACTS, { ...form, guests: '2.5', budget: '300' })).toBeNull();
+    expect(collectEdits(E.FIXTURE_FACTS, { ...form, guests: '2', budget: '300.5' })).toBeNull();
   });
 });
 
