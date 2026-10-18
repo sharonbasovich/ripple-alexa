@@ -40,7 +40,7 @@ export function FactPanel({
       return;
     }
     if (edits.length) onPreview(edits);
-    setDirty(false);
+    else setDirty(false); // Reverting to saved facts leaves no draft to apply.
   };
 
   const track =
