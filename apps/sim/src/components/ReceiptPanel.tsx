@@ -77,7 +77,7 @@ export function ReceiptPanel({ world }: { world: World }) {
             ))}
             {receipts.length === 0 && <p className="muted">Nothing has changed yet.</p>}
           </div>
-          <ol className="ledger">
+          <ol className="ledger" tabIndex={0} aria-label="Event ledger">
             {events.slice(0, 60).map((e) => (
               <li key={e.seq}>
                 <span className="seq">#{e.seq}</span> {EVENT_LABEL[e.type] ?? e.type}

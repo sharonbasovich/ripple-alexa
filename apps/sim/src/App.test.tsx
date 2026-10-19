@@ -111,6 +111,49 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+describe('cancellation fee disclosure', () => {
+  it.each(['proposed', 'approved', 'declined', 'expired', 'rejected', 'executed', 'earlier fee'] as const)('shows the current %s fee as charged only after execution, preserving historical charges', async how => {
+    if (how === 'rejected') await click('+6h');
+    await editArrival();
+    const cancellation = () => [...container.querySelectorAll('.op-card')].find(el => el.textContent?.includes('Cancel: Arrival-day dinner reservation'))!;
+    if (how === 'earlier fee') {
+      await click('Approve with $75 fee', cancellation());
+      await click('Apply 1 approved change');
+      const booking = [...container.querySelectorAll('.op-card')].find(el => el.textContent?.includes('Book: Arrival-day dinner reservation'))!;
+      await click('Approve', booking);
+      await click('Apply 1 approved change');
+      await setArrival('2026-10-18T09:40');
+    }
+    if (['approved', 'rejected', 'executed'].includes(how)) await click('Approve with $75 fee', cancellation());
+    if (how === 'declined' || how === 'earlier fee') await click('Decline', cancellation());
+    if (how === 'expired') { await click('+6h'); await click('+6h'); }
+    if (how === 'rejected') await click('+6h');
+    if (how === 'rejected' || how === 'executed') await click('Apply 1 approved change');
+    const before = localStorage.getItem('ripple:v1');
+    const saved = load()!;
+    const op = saved.world.changeSets.at(-1)!.ops.find(o => o.kind === 'cancel')!;
+    expect(op.status).toBe(how === 'earlier fee' ? 'declined' : how);
+    expect(op.fee).toBe(75);
+    const charged = how === 'executed' || how === 'earlier fee';
+    expect(saved.world.feesCharged).toBe(charged ? 75 : 0);
+    expect(saved.world.ledger.filter(event => event.type === 'fee.charged')).toHaveLength(charged ? 1 : 0);
+    const feeText = cancellation().querySelector('.op-money .fee')!.textContent!;
+    expect(feeText).toContain('$75');
+    if (how === 'executed') {
+      expect(feeText).toContain('charged and non-refundable');
+      expect(feeText).not.toContain('not charged');
+    } else expect(feeText).toContain('not charged');
+    if (how === 'proposed' || how === 'approved') expect(feeText).toContain('only if applied');
+    else expect(feeText).not.toContain('only if applied');
+    await click('Causal receipt');
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+    await act(async () => root.unmount());
+    await mount();
+    expect(cancellation().querySelector('.op-money .fee')!.textContent).toBe(feeText);
+    expect(localStorage.getItem('ripple:v1')).toBe(before);
+  });
+});
+
 describe('speech snapshot lifetime', () => {
   function speechQueue() {
     const queue = { active: null as string | null, spoken: [] as string[] };
