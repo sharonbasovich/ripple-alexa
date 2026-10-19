@@ -68,7 +68,11 @@ export function OpCard({
       <div className="op-money">
         {op.fee > 0 && (
           <span className="fee">
-            Cancellation fee <strong>${op.fee}</strong> — charged now, sunk once applied
+            Cancellation fee <strong>${op.fee}</strong> — {status === 'executed'
+              ? 'charged and non-refundable'
+              : status === 'proposed' || status === 'approved'
+                ? 'not charged; charged only if applied'
+                : 'not charged'}
           </span>
         )}
         {op.costDelta !== 0 && (
